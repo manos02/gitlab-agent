@@ -17,9 +17,10 @@ Talk to your GitLab project like you'd talk to a teammate:
 
 | Provider  | Models                      | Env Variable        |
 | --------- | --------------------------- | ------------------- |
+| Google    | Gemini 2.0 Flash, Pro, etc. | `GOOGLE_API_KEY`    |
 | OpenAI    | GPT-4o, GPT-4, etc.         | `OPENAI_API_KEY`    |
 | Anthropic | Claude Sonnet, Opus, etc.   | `ANTHROPIC_API_KEY` |
-| Google    | Gemini 2.0 Flash, Pro, etc. | `GOOGLE_API_KEY`    |
+| Ollama    | Qwen 2.5, Llama 3, any local model | None (runs locally) |
 
 Switch providers with a single env var — no code changes needed.
 

@@ -14,7 +14,10 @@ DEFAULT_MODELS: dict[str, str] = {
     "openai": "gpt-4o",
     "anthropic": "claude-sonnet-4-20250514",
     "google": "gemini-2.0-flash",
+    "ollama": "qwen2.5",
 }
+
+DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
 
 
 @dataclass(frozen=True)
@@ -27,6 +30,7 @@ class Config:
     openai_api_key: str | None = field(default=None, repr=False)
     anthropic_api_key: str | None = field(default=None, repr=False)
     google_api_key: str | None = field(default=None, repr=False)
+    ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
 
     # GitLab
     gitlab_url: str = "https://gitlab.com"
@@ -50,6 +54,7 @@ class Config:
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
             google_api_key=os.getenv("GOOGLE_API_KEY"),
+            ollama_base_url=os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL),
             gitlab_url=os.getenv("GITLAB_URL", "https://gitlab.com").rstrip("/"),
             gitlab_token=os.getenv("GITLAB_TOKEN", ""),
             gitlab_project_id=os.getenv("GITLAB_PROJECT_ID", ""),
@@ -69,6 +74,7 @@ class Config:
             "openai": self.openai_api_key,
             "anthropic": self.anthropic_api_key,
             "google": self.google_api_key,
+            "ollama": "not-needed",  # Ollama runs locally, no API key required
         }
         if not key_map.get(self.llm_provider):
             env_var = f"{self.llm_provider.upper()}_API_KEY"
