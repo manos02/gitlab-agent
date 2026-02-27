@@ -54,7 +54,7 @@ LLM_PROVIDER=google          # or: openai, anthropic
 GOOGLE_API_KEY=...            # free at https://aistudio.google.com/apikey
 GITLAB_URL=https://gitlab.com
 GITLAB_TOKEN=glpat-...        # GitLab personal access token
-GITLAB_PROJECT_ID=12345       # your project ID
+GITLAB_PROJECT_ID=12345       # optional default project ID (can be set later with /project)
 ```
 
 **Getting a GitLab token:** Go to GitLab → Settings → Access Tokens → Create one with `api` scope.
@@ -83,6 +83,7 @@ URL: https://gitlab.com/yourproject/-/issues/47
 | -------- | -------------------------- |
 | `/help`  | Show available commands    |
 | `/reset` | Clear conversation history |
+| `/project <id-or-path>` | Set active project for this session |
 | `/quit`  | Exit the agent             |
 
 ## Architecture

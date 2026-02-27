@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -24,9 +25,35 @@ class GitLabClient:
 
     # -- helpers ---------------------------------------------------------------
 
+    def current_project(self) -> str | None:
+        """Return the currently selected project (ID or path), if any."""
+        return self._project_id or None
+
+    def set_project(self, project_id_or_path: str) -> None:
+        """Set active project for all subsequent project-scoped calls.
+
+        Accepts numeric project ID (e.g. "123") or full path (e.g. "group/subgroup/repo").
+        """
+        value = project_id_or_path.strip()
+        if not value:
+            raise ValueError("Project cannot be empty")
+        self._project_id = value
+
+    def _project_ref(self) -> str:
+        """Return encoded project reference for URLs."""
+        if not self._project_id:
+            raise ValueError(
+                "No GitLab project selected. Set GITLAB_PROJECT_ID in .env or use /project <id-or-path> in the CLI."
+            )
+
+        project = self._project_id.strip()
+        if project.isdigit():
+            return project
+        return quote(project, safe="")
+
     def _project_url(self, path: str) -> str:
         """Build a project-scoped API path."""
-        return f"/projects/{self._project_id}{path}"
+        return f"/projects/{self._project_ref()}{path}"
 
     def _request(
         self,

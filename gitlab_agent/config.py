@@ -83,7 +83,6 @@ class Config:
         if not self.gitlab_token:
             problems.append("GITLAB_TOKEN is required")
 
-        if not self.gitlab_project_id:
-            problems.append("GITLAB_PROJECT_ID is required")
+        # Optional: if omitted, user can set project at runtime via CLI (/project)
 
         return problems

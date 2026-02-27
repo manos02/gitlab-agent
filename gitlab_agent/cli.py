@@ -51,12 +51,16 @@ def main() -> None:
         console.print("\nPlease set up your [bold].env[/bold] file. See [bold].env.example[/bold].")
         sys.exit(1)
 
-    console.print(
-        f"[info]Provider: {config.llm_provider} ({config.llm_model})[/info]"
-    )
-    console.print(
-        f"[info]GitLab: {config.gitlab_url} (project {config.gitlab_project_id})[/info]\n"
-    )
+    console.print(f"[info]Provider: {config.llm_provider} ({config.llm_model})[/info]")
+    if config.gitlab_project_id:
+        console.print(
+            f"[info]GitLab: {config.gitlab_url} (project {config.gitlab_project_id})[/info]\n"
+        )
+    else:
+        console.print(
+            f"[warning]GitLab: {config.gitlab_url} (no project selected)[/warning]"
+        )
+        console.print("[info]Tip: use /project <id-or-path> before project-scoped commands.[/info]\n")
 
     agent = Agent(config, on_tool_call=_on_tool_call)
 
@@ -81,11 +85,32 @@ def main() -> None:
                     agent.reset()
                     console.print("[info]Conversation cleared.[/info]\n")
                     continue
+                elif cmd.startswith("/project"):
+                    value = user_input[len("/project"):].strip()
+                    if not value:
+                        current = agent.gitlab.current_project()
+                        if current:
+                            console.print(f"[info]Current project: {current}[/info]\n")
+                        else:
+                            console.print(
+                                "[warning]No project selected. Use /project <id-or-path>[/warning]\n"
+                            )
+                        continue
+
+                    try:
+                        agent.gitlab.set_project(value)
+                    except ValueError as e:
+                        console.print(f"[error]{e}[/error]\n")
+                        continue
+
+                    console.print(f"[info]Active project set to: {value}[/info]\n")
+                    continue
                 elif cmd in ("/help", "/h"):
                     console.print(
                         Panel(
                             "[bold]/quit[/bold]  – Exit the agent\n"
                             "[bold]/reset[/bold] – Clear conversation history\n"
+                            "[bold]/project <id-or-path>[/bold] – Set active GitLab project\n"
                             "[bold]/help[/bold]  – Show this help\n"
                             "\nJust type naturally to interact with GitLab:\n"
                             '  "Create a bug ticket about the login page crashing"\n'
