@@ -101,8 +101,12 @@ def main() -> None:
                     continue
 
             # Send to agent
-            with console.status("[info]Thinking...[/info]", spinner="dots"):
-                response = agent.chat(user_input)
+            try:
+                with console.status("[info]Thinking...[/info]", spinner="dots"):
+                    response = agent.chat(user_input)
+            except RuntimeError as e:
+                console.print(f"\n[error]{e}[/error]\n")
+                continue
 
             console.print()
             console.print(Markdown(response))

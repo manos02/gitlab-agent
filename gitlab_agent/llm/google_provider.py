@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from typing import Any
 
 from google import genai
 from google.genai import types as genai_types
+from google.genai.errors import ClientError
 
 from gitlab_agent.config import Config
 from gitlab_agent.llm.base import BaseLLMProvider, LLMResponse, ToolCall
 
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 30 
 
 def _openai_tools_to_gemini(tools: list[dict[str, Any]]) -> list[genai_types.Tool]:
     """Convert OpenAI function-calling tool schemas to Gemini format."""
@@ -104,11 +108,34 @@ class GoogleProvider(BaseLLMProvider):
         if tools:
             config.tools = _openai_tools_to_gemini(tools)
 
-        response = self._client.models.generate_content(
-            model=self._model,
-            contents=contents,
-            config=config,
-        )
+        # Retry on rate-limit (429) errors
+        last_error: Exception | None = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = self._client.models.generate_content(
+                    model=self._model,
+                    contents=contents,
+                    config=config,
+                )
+                break
+            except ClientError as e:
+                if e.code == 429:
+                    last_error = e
+                    wait = RETRY_BASE_DELAY * (attempt + 1)
+                    import sys
+                    print(
+                        f"\n⏳ Rate limited by Gemini API. Retrying in {wait}s "
+                        f"(attempt {attempt + 1}/{MAX_RETRIES})...",
+                        file=sys.stderr,
+                    )
+                    time.sleep(wait)
+                else:
+                    raise
+        else:
+            raise RuntimeError(
+                f"Gemini API rate limit exceeded after {MAX_RETRIES} retries. "
+                "Wait a minute and try again, or switch to a paid tier."
+            ) from last_error
 
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []

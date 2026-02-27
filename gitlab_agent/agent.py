@@ -66,7 +66,12 @@ class Agent:
         tool_schemas = self.registry.all_schemas()
 
         for _ in range(MAX_TOOL_ROUNDS):
-            response = self.llm.chat(self.messages, tools=tool_schemas)
+            try:
+                response = self.llm.chat(self.messages, tools=tool_schemas)
+            except Exception as e:
+                # Remove the user message so conversation stays clean
+                self.messages.pop()
+                raise RuntimeError(f"LLM request failed: {e}") from e
 
             # If no tool calls, we have a final text response
             if not response.tool_calls:
