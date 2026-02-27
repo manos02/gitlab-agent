@@ -55,6 +55,7 @@ GOOGLE_API_KEY=...            # free at https://aistudio.google.com/apikey
 GITLAB_URL=https://gitlab.com
 GITLAB_TOKEN=glpat-...        # GitLab personal access token
 GITLAB_PROJECT_ID=12345       # optional default project ID (can be set later with /project)
+GITLAB_GROUP_ID=mygroup/platform  # optional default group path or ID (for cross-repo list/search)
 ```
 
 **Getting a GitLab token:** Go to GitLab → Settings → Access Tokens → Create one with `api` scope.
@@ -84,7 +85,12 @@ URL: https://gitlab.com/yourproject/-/issues/47
 | `/help`  | Show available commands    |
 | `/reset` | Clear conversation history |
 | `/project <id-or-path>` | Set active project for this session |
+| `/group <id-or-path>` | Set active group for this session |
 | `/quit`  | Exit the agent             |
+
+Group scope notes:
+- `list_issues`, `list_merge_requests`, `search_project`, and `list_milestones` work with either project or group scope.
+- Create/update/close issue, labels, boards, and MR-by-IID operations remain project-scoped.
 
 ## Architecture
 

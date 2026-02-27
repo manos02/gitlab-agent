@@ -47,8 +47,9 @@ class ListMergeRequestsTool(Tool):
         lines = [f"Found {len(mrs)} merge request(s):\n"]
         for mr in mrs:
             author = mr.get("author", {}).get("username", "unknown")
+            ref = mr.get("references", {}).get("full") or f"!{mr['iid']}"
             lines.append(
-                f"  !{mr['iid']} [{mr['state']}] {mr['title']}"
+                f"  {ref} [{mr['state']}] {mr['title']}"
                 f"  by {author}"
                 f"  {mr.get('source_branch', '?')} -> {mr.get('target_branch', '?')}"
             )

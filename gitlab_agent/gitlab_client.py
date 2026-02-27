@@ -16,6 +16,7 @@ class GitLabClient:
     def __init__(self, config: Config) -> None:
         self._base_url = f"{config.gitlab_url}/api/v4"
         self._project_id = config.gitlab_project_id
+        self._group_id = config.gitlab_group_id
         self._headers = {"PRIVATE-TOKEN": config.gitlab_token}
         self._client = httpx.Client(
             base_url=self._base_url,
@@ -29,6 +30,10 @@ class GitLabClient:
         """Return the currently selected project (ID or path), if any."""
         return self._project_id or None
 
+    def current_group(self) -> str | None:
+        """Return the currently selected group (ID or path), if any."""
+        return self._group_id or None
+
     def set_project(self, project_id_or_path: str) -> None:
         """Set active project for all subsequent project-scoped calls.
 
@@ -38,6 +43,28 @@ class GitLabClient:
         if not value:
             raise ValueError("Project cannot be empty")
         self._project_id = value
+
+    def set_group(self, group_id_or_path: str) -> None:
+        """Set active group for group-scoped calls.
+
+        Accepts numeric group ID (e.g. "42") or full path (e.g. "mygroup/platform").
+        """
+        value = group_id_or_path.strip()
+        if not value:
+            raise ValueError("Group cannot be empty")
+        self._group_id = value
+
+    def _group_ref(self) -> str:
+        """Return encoded group reference for URLs."""
+        if not self._group_id:
+            raise ValueError(
+                "No GitLab group selected. Set GITLAB_GROUP_ID in .env or use /group <id-or-path> in the CLI."
+            )
+
+        group = self._group_id.strip()
+        if group.isdigit():
+            return group
+        return quote(group, safe="")
 
     def _project_ref(self) -> str:
         """Return encoded project reference for URLs."""
@@ -54,6 +81,10 @@ class GitLabClient:
     def _project_url(self, path: str) -> str:
         """Build a project-scoped API path."""
         return f"/projects/{self._project_ref()}{path}"
+
+    def _group_url(self, path: str) -> str:
+        """Build a group-scoped API path."""
+        return f"/groups/{self._group_ref()}{path}"
 
     def _request(
         self,
@@ -131,7 +162,13 @@ class GitLabClient:
             params["search"] = search
         if milestone:
             params["milestone"] = milestone
-        return self._paginate(self._project_url("/issues"), params=params)
+        if self._project_id:
+            return self._paginate(self._project_url("/issues"), params=params)
+        if self._group_id:
+            return self._paginate(self._group_url("/issues"), params=params)
+        raise ValueError(
+            "No scope selected for listing issues. Use /project <id-or-path> or /group <id-or-path>."
+        )
 
     def update_issue(self, issue_iid: int, **fields: Any) -> dict:
         return self._request("PUT", self._project_url(f"/issues/{issue_iid}"), json=fields)
@@ -161,7 +198,13 @@ class GitLabClient:
         params: dict[str, Any] = {"state": state}
         if search:
             params["search"] = search
-        return self._paginate(self._project_url("/merge_requests"), params=params)
+        if self._project_id:
+            return self._paginate(self._project_url("/merge_requests"), params=params)
+        if self._group_id:
+            return self._paginate(self._group_url("/merge_requests"), params=params)
+        raise ValueError(
+            "No scope selected for listing merge requests. Use /project <id-or-path> or /group <id-or-path>."
+        )
 
     def get_merge_request(self, mr_iid: int) -> dict:
         return self._request("GET", self._project_url(f"/merge_requests/{mr_iid}"))
@@ -184,15 +227,30 @@ class GitLabClient:
 
     def search_project(self, scope: str, search: str) -> list[dict]:
         """Search within the project. Scope: issues, merge_requests, milestones, etc."""
-        return self._paginate(
-            self._project_url("/search"),
-            params={"scope": scope, "search": search},
+        if self._project_id:
+            return self._paginate(
+                self._project_url("/search"),
+                params={"scope": scope, "search": search},
+            )
+        if self._group_id:
+            return self._paginate(
+                self._group_url("/search"),
+                params={"scope": scope, "search": search},
+            )
+        raise ValueError(
+            "No scope selected for search. Use /project <id-or-path> or /group <id-or-path>."
         )
 
     # -- Milestones ------------------------------------------------------------
 
     def list_milestones(self, *, state: str = "active") -> list[dict]:
-        return self._paginate(self._project_url("/milestones"), params={"state": state})
+        if self._project_id:
+            return self._paginate(self._project_url("/milestones"), params={"state": state})
+        if self._group_id:
+            return self._paginate(self._group_url("/milestones"), params={"state": state})
+        raise ValueError(
+            "No scope selected for milestones. Use /project <id-or-path> or /group <id-or-path>."
+        )
 
     # -- Cleanup ---------------------------------------------------------------
 

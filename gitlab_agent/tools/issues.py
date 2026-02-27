@@ -111,8 +111,9 @@ class ListIssuesTool(Tool):
         for issue in issues:
             labels = ", ".join(issue.get("labels", []))
             assignees = ", ".join(a["username"] for a in issue.get("assignees", []))
+            ref = issue.get("references", {}).get("full") or f"#{issue['iid']}"
             lines.append(
-                f"  #{issue['iid']} [{issue['state']}] {issue['title']}"
+                f"  {ref} [{issue['state']}] {issue['title']}"
                 + (f"  labels: {labels}" if labels else "")
                 + (f"  assignees: {assignees}" if assignees else "")
             )

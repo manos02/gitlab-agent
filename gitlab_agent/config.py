@@ -36,6 +36,7 @@ class Config:
     gitlab_url: str = "https://gitlab.com"
     gitlab_token: str = field(default="", repr=False)
     gitlab_project_id: str = ""
+    gitlab_group_id: str = ""
 
     @classmethod
     def from_env(cls, env_path: str | Path | None = None) -> Config:
@@ -58,6 +59,7 @@ class Config:
             gitlab_url=os.getenv("GITLAB_URL", "https://gitlab.com").rstrip("/"),
             gitlab_token=os.getenv("GITLAB_TOKEN", ""),
             gitlab_project_id=os.getenv("GITLAB_PROJECT_ID", ""),
+            gitlab_group_id=os.getenv("GITLAB_GROUP_ID", ""),
         )
 
     def validate(self) -> list[str]:
