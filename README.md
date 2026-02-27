@@ -15,11 +15,11 @@ Talk to your GitLab project like you'd talk to a teammate:
 
 ## Supported LLM Providers
 
-| Provider | Models | Env Variable |
-|----------|--------|-------------|
-| OpenAI | GPT-4o, GPT-4, etc. | `OPENAI_API_KEY` |
-| Anthropic | Claude Sonnet, Opus, etc. | `ANTHROPIC_API_KEY` |
-| Google | Gemini 2.0 Flash, Pro, etc. | `GOOGLE_API_KEY` |
+| Provider  | Models                      | Env Variable        |
+| --------- | --------------------------- | ------------------- |
+| OpenAI    | GPT-4o, GPT-4, etc.         | `OPENAI_API_KEY`    |
+| Anthropic | Claude Sonnet, Opus, etc.   | `ANTHROPIC_API_KEY` |
+| Google    | Gemini 2.0 Flash, Pro, etc. | `GOOGLE_API_KEY`    |
 
 Switch providers with a single env var — no code changes needed.
 
@@ -29,7 +29,7 @@ Switch providers with a single env var — no code changes needed.
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/gitlab-agent.git
+git clone https://github.com/manos02/gitlab-agent.git
 cd gitlab-agent
 
 # Create a virtual environment
@@ -78,11 +78,11 @@ URL: https://gitlab.com/yourproject/-/issues/47
 
 ## CLI Commands
 
-| Command | Description |
-|---------|-------------|
-| `/help` | Show available commands |
+| Command  | Description                |
+| -------- | -------------------------- |
+| `/help`  | Show available commands    |
 | `/reset` | Clear conversation history |
-| `/quit` | Exit the agent |
+| `/quit`  | Exit the agent             |
 
 ## Architecture
 
