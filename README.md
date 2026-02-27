@@ -49,8 +49,8 @@ cp .env.example .env
 Edit `.env` with your settings:
 
 ```env
-LLM_PROVIDER=openai          # or: anthropic, google
-OPENAI_API_KEY=sk-...         # your LLM API key
+LLM_PROVIDER=google          # or: openai, anthropic
+GOOGLE_API_KEY=...            # free at https://aistudio.google.com/apikey
 GITLAB_URL=https://gitlab.com
 GITLAB_TOKEN=glpat-...        # GitLab personal access token
 GITLAB_PROJECT_ID=12345       # your project ID

@@ -41,7 +41,7 @@ class Config:
         else:
             load_dotenv()  # searches CWD and parents
 
-        provider = os.getenv("LLM_PROVIDER", "openai").lower().strip()
+        provider = os.getenv("LLM_PROVIDER", "google").lower().strip()
         model = os.getenv("LLM_MODEL", "") or DEFAULT_MODELS.get(provider, "")
 
         return cls(
