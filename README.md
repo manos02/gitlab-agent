@@ -54,7 +54,6 @@ LLM_PROVIDER=google          # or: openai, anthropic
 GOOGLE_API_KEY=...            # free at https://aistudio.google.com/apikey
 GITLAB_URL=https://gitlab.com
 GITLAB_TOKEN=glpat-...        # GitLab personal access token
-GITLAB_PROJECT_ID=12345       # optional default project ID (can be set later with /project)
 GITLAB_GROUP_ID=mygroup/platform  # optional default group path or ID (for cross-repo list/search)
 ```
 
@@ -90,7 +89,13 @@ URL: https://gitlab.com/yourproject/-/issues/47
 
 Group scope notes:
 - `list_issues`, `list_merge_requests`, `search_project`, and `list_milestones` work with either project or group scope.
-- Create/update/close issue, labels, boards, and MR-by-IID operations remain project-scoped.
+- If no project is active, the agent prefers group endpoints where available.
+- Create/update/close issue, labels, and MR-by-IID operations remain project-scoped.
+
+Project alias notes:
+- On startup, the agent fetches projects from `groups/:id/projects` (using `GITLAB_GROUP_ID`) and builds aliases in memory.
+- Aliases include project name/path variants mapped to project IDs.
+- When a user message includes one of these aliases, the agent auto-selects that project.
 
 ## Architecture
 

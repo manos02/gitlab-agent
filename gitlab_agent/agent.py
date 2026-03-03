@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Callable
 
 from gitlab_agent.config import Config
 from gitlab_agent.gitlab_client import GitLabClient
-from gitlab_agent.llm.base import BaseLLMProvider, LLMResponse
+from gitlab_agent.llm.base import BaseLLMProvider
 from gitlab_agent.llm.factory import create_llm_provider
+from gitlab_agent.project_aliases import fetch_project_aliases
 from gitlab_agent.tools.base import ToolRegistry
 from gitlab_agent.tools.registry import create_default_registry
 
@@ -51,6 +53,7 @@ class Agent:
         self.gitlab = gitlab or GitLabClient(config)
         self.registry = registry or create_default_registry()
         self.on_tool_call = on_tool_call  # callback for UI to display tool activity
+        self.project_aliases = self._initialize_project_aliases()
 
         self.messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -61,6 +64,7 @@ class Agent:
 
         This may involve multiple LLM ↔ tool rounds before producing a final answer.
         """
+        self._resolve_project_alias_from_message(user_message)
         self.messages.append({"role": "user", "content": user_message})
 
         tool_schemas = self.registry.all_schemas()
@@ -130,3 +134,41 @@ class Agent:
     def close(self) -> None:
         """Clean up resources."""
         self.gitlab.close()
+
+    def _resolve_project_alias_from_message(self, user_message: str) -> None:
+        """Set active project when user mentions a known project alias in natural language."""
+        if not self.project_aliases:
+            return
+
+        text = user_message.lower()
+        matched_name = ""
+        matched_project = ""
+
+        for alias in sorted(self.project_aliases.keys(), key=len, reverse=True):
+            if re.fullmatch(r"[\w\s]+", alias):
+                pattern = rf"\b{re.escape(alias)}\b"
+                matched = bool(re.search(pattern, text))
+            else:
+                matched = alias in text
+
+            if matched:
+                matched_name = alias
+                matched_project = self.project_aliases[alias]
+                break
+
+        if not matched_name:
+            return
+
+        try:
+            self.gitlab.set_project(matched_project)
+            if self.on_tool_call:
+                self.on_tool_call("set_active_project", {"project_alias": matched_name, "project": matched_project})
+        except ValueError:
+            return
+
+    def _initialize_project_aliases(self) -> dict[str, str]:
+        """Fetch aliases from GitLab /projects at startup."""
+        try:
+            return fetch_project_aliases(self.gitlab)
+        except Exception:
+            return {}

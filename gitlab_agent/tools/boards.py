@@ -15,7 +15,7 @@ class ListBoardsTool(Tool):
 
     @property
     def description(self) -> str:
-        return "List all issue boards in the project."
+        return "List all issue boards in the active project or group."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -24,7 +24,7 @@ class ListBoardsTool(Tool):
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         boards = gitlab.list_boards()
         if not boards:
-            return "No boards found in this project."
+            return "No boards found in the active scope."
 
         lines = [f"Found {len(boards)} board(s):\n"]
         for board in boards:

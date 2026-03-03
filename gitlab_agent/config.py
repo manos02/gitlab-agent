@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 DEFAULT_MODELS: dict[str, str] = {
     "openai": "gpt-4o",
     "anthropic": "claude-sonnet-4-20250514",
-    "google": "gemini-2.0-flash",
+    "google": "gemini-2.5-flash",
     "ollama": "qwen2.5",
 }
 
@@ -35,7 +35,6 @@ class Config:
     # GitLab
     gitlab_url: str = "https://gitlab.com"
     gitlab_token: str = field(default="", repr=False)
-    gitlab_project_id: str = ""
     gitlab_group_id: str = ""
 
     @classmethod
@@ -58,7 +57,6 @@ class Config:
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL),
             gitlab_url=os.getenv("GITLAB_URL", "https://gitlab.com").rstrip("/"),
             gitlab_token=os.getenv("GITLAB_TOKEN", ""),
-            gitlab_project_id=os.getenv("GITLAB_PROJECT_ID", ""),
             gitlab_group_id=os.getenv("GITLAB_GROUP_ID", ""),
         )
 

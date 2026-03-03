@@ -52,11 +52,7 @@ def main() -> None:
         sys.exit(1)
 
     console.print(f"[info]Provider: {config.llm_provider} ({config.llm_model})[/info]")
-    if config.gitlab_project_id:
-        console.print(
-            f"[info]GitLab: {config.gitlab_url} (project {config.gitlab_project_id})[/info]"
-        )
-    elif config.gitlab_group_id:
+    if config.gitlab_group_id:
         console.print(
             f"[info]GitLab: {config.gitlab_url} (group {config.gitlab_group_id})[/info]"
         )
@@ -64,7 +60,7 @@ def main() -> None:
         console.print(
             f"[warning]GitLab: {config.gitlab_url} (no project/group selected)[/warning]"
         )
-        console.print("[info]Tip: use /project <id-or-path> or /group <id-or-path> before scoped commands.[/info]")
+        console.print("[info]Tip: use /group <id-or-path> or /project <id-or-path>. Project aliases refresh automatically.[/info]")
     console.print()
 
     agent = Agent(config, on_tool_call=_on_tool_call)
@@ -138,6 +134,7 @@ def main() -> None:
                             "[bold]/project <id-or-path>[/bold] – Set active GitLab project\n"
                             "[bold]/group <id-or-path>[/bold] – Set active GitLab group\n"
                             "[bold]/help[/bold]  – Show this help\n"
+                            "[dim]Project names are auto-detected from cached group projects.[/dim]\n"
                             "\nJust type naturally to interact with GitLab:\n"
                             '  "Create a bug ticket about the login page crashing"\n'
                             '  "Find the MR related to the search feature"\n'
