@@ -1,9 +1,6 @@
 """CLI chat interface – the user-facing entry point."""
 
 from __future__ import annotations
-
-import sys
-
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -25,7 +22,12 @@ console = Console(theme=theme)
 
 
 def _on_tool_call(name: str, args: dict) -> None:
-    """Display tool calls as they happen."""
+    """
+    Display tool calls as they happen.
+    e.g.
+    ⚙ list_issues(labels='bug', project_id=1)
+    ⚙ list_issues(labels='bug', state='opened', project_id=1)
+    """
     args_str = ", ".join(f"{k}={v!r}" for k, v in args.items())
     console.print(f"  [tool]⚙ {name}({args_str})[/tool]")
 
@@ -36,21 +38,13 @@ def main() -> None:
         Panel.fit(
             "[bold cyan]GitLab Agent[/bold cyan]\n"
             "An AI assistant for managing your GitLab project.\n"
-            "Type [bold]/help[/bold] for commands, [bold]/quit[/bold] to exit.",
+            "Type [bold]/help[/bold] for commands, [bold]/q[/bold] to exit.",
             border_style="cyan",
         )
     )
 
     # Load config
     config = Config.from_env()
-    problems = config.validate()
-    if problems:
-        console.print("[error]Configuration errors:[/error]")
-        for p in problems:
-            console.print(f"  [error]• {p}[/error]")
-        console.print("\nPlease set up your [bold].env[/bold] file. See [bold].env.example[/bold].")
-        sys.exit(1)
-
     console.print(f"[info]Provider: {config.llm_provider} ({config.llm_model})[/info]")
     if config.gitlab_group_id:
         console.print(
@@ -64,6 +58,10 @@ def main() -> None:
     console.print()
 
     agent = Agent(config, on_tool_call=_on_tool_call)
+
+    # Map gitlab projects -> ids if possible
+    console.print("[info]⌛ Mapping project ids to project names [/info]")
+    agent.project_aliases = agent._initialize_project_aliases()
 
     try:
         while True:
@@ -86,6 +84,7 @@ def main() -> None:
                     agent.reset()
                     console.print("[info]Conversation cleared.[/info]\n")
                     continue
+                # Command to set project that the user wants to query on
                 elif cmd.startswith("/project"):
                     value = user_input[len("/project"):].strip()
                     if not value:
