@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import field
 from pathlib import Path
-
+from pydantic import BaseModel, field_validator
 from dotenv import load_dotenv
 
 
@@ -20,16 +20,13 @@ DEFAULT_MODELS: dict[str, str] = {
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
 
 
-@dataclass(frozen=True)
-class Config:
+class Config(BaseModel):
     """Immutable application configuration."""
 
     # LLM
     llm_provider: str
     llm_model: str
-    openai_api_key: str | None = field(default=None, repr=False)
-    anthropic_api_key: str | None = field(default=None, repr=False)
-    google_api_key: str | None = field(default=None, repr=False)
+    model_key: str
     ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
 
     # GitLab
@@ -37,52 +34,23 @@ class Config:
     gitlab_token: str = field(default="", repr=False)
     gitlab_group_id: str = ""
 
+    @field_validator("llm_provider")
+    @classmethod
+    def api_key_required(cls, value):
+        if value not in DEFAULT_MODELS:
+            raise ValueError(f"LLM_PROVIDER must be one of {list(DEFAULT_MODELS.keys())}, "
+                f"got '{value}'")
+        return value
+
     @classmethod
     def from_env(cls, env_path: str | Path | None = None) -> Config:
-        """Load configuration from environment variables (with optional .env file)."""
-        if env_path:
-            load_dotenv(env_path)
-        else:
-            load_dotenv()  # searches CWD and parents
-
-        provider = os.getenv("LLM_PROVIDER", "google").lower().strip()
-        model = os.getenv("LLM_MODEL", "") or DEFAULT_MODELS.get(provider, "")
-
+        load_dotenv(env_path) # Load the env file with optional path
         return cls(
-            llm_provider=provider,
-            llm_model=model,
-            openai_api_key=os.getenv("OPENAI_API_KEY"),
-            anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
-            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            llm_provider=os.getenv("LLM_PROVIDER"),
+            llm_model=os.getenv("LLM_MODEL") or DEFAULT_MODELS.get(cls.llm_provider),
+            model_key=os.getenv("API_KEY"),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL),
             gitlab_url=os.getenv("GITLAB_URL", "https://gitlab.com").rstrip("/"),
             gitlab_token=os.getenv("GITLAB_TOKEN", ""),
             gitlab_group_id=os.getenv("GITLAB_GROUP_ID", ""),
         )
-
-    def validate(self) -> list[str]:
-        """Return a list of configuration problems (empty = valid)."""
-        problems: list[str] = []
-
-        if self.llm_provider not in DEFAULT_MODELS:
-            problems.append(
-                f"LLM_PROVIDER must be one of {list(DEFAULT_MODELS.keys())}, "
-                f"got '{self.llm_provider}'"
-            )
-
-        key_map = {
-            "openai": self.openai_api_key,
-            "anthropic": self.anthropic_api_key,
-            "google": self.google_api_key,
-            "ollama": "not-needed",  # Ollama runs locally, no API key required
-        }
-        if not key_map.get(self.llm_provider):
-            env_var = f"{self.llm_provider.upper()}_API_KEY"
-            problems.append(f"{env_var} is required when LLM_PROVIDER={self.llm_provider}")
-
-        if not self.gitlab_token:
-            problems.append("GITLAB_TOKEN is required")
-
-        # Optional: if omitted, user can set project at runtime via CLI (/project)
-
-        return problems
