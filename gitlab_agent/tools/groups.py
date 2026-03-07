@@ -5,21 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from gitlab_agent.gitlab_client import GitLabClient
-from gitlab_agent.tools.base import Tool
+from gitlab_agent.tools.base import JsonTool
 
 
-class GetGroupInfoTool(Tool):
-    @property
-    def name(self) -> str:
-        return "get_group_info"
-
-    @property
-    def description(self) -> str:
-        return "Get details for the active GitLab group."
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {"type": "object", "properties": {}}
+class GetGroupInfoTool(JsonTool):
+    tool_name = "get_group_info"
 
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         _ = kwargs
@@ -36,32 +26,8 @@ class GetGroupInfoTool(Tool):
         )
 
 
-class ListGroupProjectsTool(Tool):
-    @property
-    def name(self) -> str:
-        return "list_group_projects"
-
-    @property
-    def description(self) -> str:
-        return "List projects in the active group, with optional search filter."
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "search": {
-                    "type": "string",
-                    "description": "Optional search text for group projects",
-                    "default": "",
-                },
-                "include_subgroups": {
-                    "type": "boolean",
-                    "description": "Include subgroup projects",
-                    "default": True,
-                },
-            },
-        }
+class ListGroupProjectsTool(JsonTool):
+    tool_name = "list_group_projects"
 
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         projects = gitlab.list_group_projects(

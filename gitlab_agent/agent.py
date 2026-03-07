@@ -3,46 +3,24 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Callable
 
 from gitlab_agent.config import Config
 from gitlab_agent.gitlab_client import GitLabClient
 from gitlab_agent.llm.base import BaseLLMProvider
 from gitlab_agent.llm.factory import create_llm_provider
-from gitlab_agent.project_aliases import fetch_project_aliases
+from gitlab_agent.resources import get_agent_settings
 from gitlab_agent.tools.base import ToolRegistry
 from gitlab_agent.tools.registry import create_default_registry
+from gitlab_agent.tools.utils import (
+    _aliases_from_projects,
+    _best_project_alias_match,
+)
 
 
-SYSTEM_PROMPT = """\
-You are GitLab Agent, an AI assistant that helps users manage their GitLab projects \
-through natural language.
-
-You have access to tools that let you interact with the GitLab API. Use them to \
-fulfill the user's requests. When the user asks you to do something, call the \
-appropriate tool(s). You may need to chain multiple tool calls to complete a request \
-(e.g., list boards first to find a board ID, then list its columns).
-
-Guidelines:
-- Be concise and helpful.
-- When creating issues, ask for missing information only if truly ambiguous.
-- When searching, try multiple approaches if the first doesn't find results.
-- Always confirm what you did with a clear summary.
-- If a tool call fails, explain the error and suggest a fix.
-- Format IIDs as #N for issues and !N for merge requests.
-"""
-
-MAX_TOOL_ROUNDS = 10  # Safety limit on tool-calling rounds per user message
-
-
-def _normalize_for_alias_match(value: str) -> str:
-    """Normalize text for alias matching.
-
-    Lowercase and collapse non-alphanumeric separators to single spaces.
-    """
-    normalized = re.sub(r"[^a-z0-9]+", " ", value.lower())
-    return " ".join(normalized.split())
+AGENT_SETTINGS = get_agent_settings()
+SYSTEM_PROMPT = AGENT_SETTINGS["system_prompt"]
+MAX_TOOL_ROUNDS = AGENT_SETTINGS["max_tool_rounds"]
 
 
 class Agent:
@@ -64,6 +42,7 @@ class Agent:
         self.on_tool_call = on_tool_call  # callback for UI to display tool activity
         self.project_aliases = None
         self._project_set_by_alias = False
+        self.tool_schemas = self.registry.all_schemas()
 
         self.messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -74,68 +53,73 @@ class Agent:
 
         This may involve multiple LLM ↔ tool rounds before producing a final answer.
         """
-        self._resolve_project_alias_from_message(user_message)
+        project_matched = self._resolve_project_alias_from_message(user_message)
+        self.messages.append(
+            {"role": "system", "content": self._scope_hint_message(project_matched)}
+        )
         self.messages.append({"role": "user", "content": user_message})
 
-        tool_schemas = self.registry.all_schemas()
+        try:
+            for _ in range(MAX_TOOL_ROUNDS):
+                response = self.llm.chat(self.messages, tools=self.tool_schemas)
+                # If no tool calls, we have a final text response
+                if not response.tool_calls:
+                    assistant_text = response.content or ""
+                    self.messages.append({"role": "assistant", "content": assistant_text})
+                    return assistant_text
 
-        for _ in range(MAX_TOOL_ROUNDS):
-            try:
-                response = self.llm.chat(self.messages, tools=tool_schemas)
-            except Exception as e:
-                # Remove the user message so conversation stays clean
-                self.messages.pop()
-                raise RuntimeError(f"LLM request failed: {e}") from e
+                # Build assistant message with tool calls (OpenAI format for history)
+                assistant_msg: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": response.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": json.dumps(tc.arguments),
+                            },
+                        }
+                        for tc in response.tool_calls
+                    ],
+                }
+                self.messages.append(assistant_msg)
 
-            # If no tool calls, we have a final text response
-            if not response.tool_calls:
-                assistant_text = response.content or ""
-                self.messages.append({"role": "assistant", "content": assistant_text})
-                return assistant_text
+                # Execute each tool call
+                for tc in response.tool_calls:
+                    if self.on_tool_call:
+                        self.on_tool_call(tc.name, tc.arguments)
 
-            # Build assistant message with tool calls (OpenAI format for history)
-            assistant_msg: dict[str, Any] = {
-                "role": "assistant",
-                "content": response.content or "",
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
+                    tool = self.registry.get(tc.name)
+                    if tool is None:
+                        result = f"Error: Unknown tool '{tc.name}'"
+                    else:
+                        try:
+                            result = tool.run(self.gitlab, **tc.arguments)
+                        except Exception as e:
+                            result = f"Error executing {tc.name}: {e}"
+
+                    self.messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
                             "name": tc.name,
-                            "arguments": json.dumps(tc.arguments),
-                        },
-                    }
-                    for tc in response.tool_calls
-                ],
-            }
-            self.messages.append(assistant_msg)
+                            "content": result,
+                        }
+                    )
 
-            # Execute each tool call
-            for tc in response.tool_calls:
-                if self.on_tool_call:
-                    self.on_tool_call(tc.name, tc.arguments)
-
-                tool = self.registry.get(tc.name)
-                if tool is None:
-                    result = f"Error: Unknown tool '{tc.name}'"
-                else:
-                    try:
-                        result = tool.run(self.gitlab, **tc.arguments)
-                    except Exception as e:
-                        result = f"Error executing {tc.name}: {e}"
-
-                self.messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "name": tc.name,
-                        "content": result,
-                    }
-                )
-
-        # Exceeded max rounds
-        return "I've reached the maximum number of tool-calling rounds. Please try a simpler request or break it into steps."
+            # Exceeded max rounds
+            return "I've reached the maximum number of tool-calling rounds. Please try a simpler request or break it into steps."
+        except Exception as e:
+            # Remove transient request-scoping messages so conversation stays clean
+            self.messages.pop()
+            self.messages.pop()
+            raise RuntimeError(f"LLM request failed: {e}") from e
+        finally:
+            if self._project_set_by_alias:
+                self.gitlab.clear_project()
+                self._project_set_by_alias = False
 
     def reset(self) -> None:
         """Clear conversation history (keep system prompt)."""
@@ -145,52 +129,54 @@ class Agent:
         """Clean up resources."""
         self.gitlab.close()
 
-    def _resolve_project_alias_from_message(self, user_message: str) -> None:
+    def _scope_hint_message(self, project_matched: bool) -> str:
+        """Describe the scope the model should assume for the current request."""
+        current_project = self.gitlab.current_project()
+        if project_matched and current_project:
+            return (
+                f"Scope hint: the user message matched project '{current_project}'. "
+                "Prefer project-scoped calls for this request."
+            )
+
+        current_group = self.gitlab.current_group()
+        if current_group:
+            return (
+                f"Scope hint: no project alias matched in this user message. The active default "
+                f"scope is GitLab group '{current_group}'. Treat this as a broader group-level "
+                "request, prefer group-scoped listing/search calls, and only ask for a specific "
+                "project if the task truly requires project scope."
+            )
+
+        return (
+            "Scope hint: no project alias matched and no default group is set. Ask for a project "
+            "or group only when the requested action needs one."
+        )
+
+    def _resolve_project_alias_from_message(self, user_message: str) -> bool:
         """Set active project when user mentions a known project alias in natural language."""
         if not self.project_aliases:
             if self._project_set_by_alias:
                 self.gitlab.clear_project()
                 self._project_set_by_alias = False
-            return
+            return False
 
-        text = user_message.lower()
-        normalized_text = _normalize_for_alias_match(user_message)
-        matched_name = ""
-        matched_project = ""
-
-        for alias in sorted(self.project_aliases.keys(), key=len, reverse=True):
-            alias_text = alias.strip().lower()
-            if not alias_text:
-                continue
-
-            matched = alias_text in text
-            if not matched:
-                normalized_alias = _normalize_for_alias_match(alias_text)
-                if normalized_alias:
-                    matched = f" {normalized_alias} " in f" {normalized_text} "
-
-            if matched:
-                matched_name = alias
-                matched_project = self.project_aliases[alias]
-                break
-
-        if not matched_name:
+        project_id, project_name = _best_project_alias_match(user_message, self.project_aliases)
+        if not project_id:
             if self._project_set_by_alias:
                 self.gitlab.clear_project()
                 self._project_set_by_alias = False
-            return
+            return False
 
-        try:
-            self.gitlab.set_project(matched_project)
-            self._project_set_by_alias = True
-            if self.on_tool_call:
-                self.on_tool_call("set_active_project", {"project_alias": matched_name, "project": matched_project})
-        except ValueError:
-            return
+        if self.on_tool_call:
+            self.on_tool_call(
+                "set_active_project",
+                {"project_name": project_name, "project_id": project_id},
+            )
 
-    def _initialize_project_aliases(self) -> dict[str, str]:
+        self.gitlab.set_project(project_id)
+        self._project_set_by_alias = True
+        return True
+
+    def initialize_project_aliases(self) -> dict[str, dict[str, str | set[str]]]:
         """Fetch aliases from GitLab /projects at startup."""
-        try:
-            return fetch_project_aliases(self.gitlab)
-        except Exception:
-            return {}
+        return _aliases_from_projects(self.gitlab)

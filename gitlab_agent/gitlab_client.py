@@ -74,7 +74,7 @@ class GitLabClient:
         """Return encoded project reference for URLs."""
         if not self._project_id:
             raise ValueError(
-                "No GitLab project selected. Use /project <id-or-path> in the CLI or mention a mapped project name in chat."
+                "No GitLab project selected. Mention a project in your request so the agent can auto-select it."
             )
 
         project = self._project_id.strip()
@@ -89,6 +89,16 @@ class GitLabClient:
     def _group_url(self, path: str) -> str:
         """Build a group-scoped API path."""
         return f"/groups/{self._group_ref()}{path}"
+
+    def _scoped_url(self, path: str, *, scope_name: str) -> str:
+        """Build a scoped API path, preferring project and falling back to group."""
+        if self._project_id:
+            return self._project_url(path)
+        if self._group_id:
+            return self._group_url(path)
+        raise ValueError(
+            f"No scope selected for {scope_name}. Set GITLAB_GROUP_ID or use /group <id-or-path>, or mention a project in your request."
+        )
 
     def _request(
         self,
@@ -208,12 +218,9 @@ class GitLabClient:
             params["search"] = search
         if milestone:
             params["milestone"] = milestone
-        if self._project_id:
-            return self._paginate(self._project_url("/issues"), params=params)
-        if self._group_id:
-            return self._paginate(self._group_url("/issues"), params=params)
-        raise ValueError(
-            "No scope selected for listing issues. Use /project <id-or-path> or /group <id-or-path>."
+        return self._paginate(
+            self._scoped_url("/issues", scope_name="listing issues"),
+            params=params,
         )
 
     def update_issue(self, issue_iid: int, **fields: Any) -> dict:
@@ -244,12 +251,9 @@ class GitLabClient:
         params: dict[str, Any] = {"state": state}
         if search:
             params["search"] = search
-        if self._project_id:
-            return self._paginate(self._project_url("/merge_requests"), params=params)
-        if self._group_id:
-            return self._paginate(self._group_url("/merge_requests"), params=params)
-        raise ValueError(
-            "No scope selected for listing merge requests. Use /project <id-or-path> or /group <id-or-path>."
+        return self._paginate(
+            self._scoped_url("/merge_requests", scope_name="listing merge requests"),
+            params=params,
         )
 
     def get_merge_request(self, mr_iid: int) -> dict:
@@ -264,49 +268,27 @@ class GitLabClient:
     # -- Boards ----------------------------------------------------------------
 
     def list_boards(self) -> list[dict]:
-        if self._project_id:
-            return self._paginate(self._project_url("/boards"))
-        if self._group_id:
-            return self._paginate(self._group_url("/boards"))
-        raise ValueError(
-            "No scope selected for boards. Use /project <id-or-path> or /group <id-or-path>."
-        )
+        return self._paginate(self._scoped_url("/boards", scope_name="boards"))
 
     def list_board_lists(self, board_id: int) -> list[dict]:
-        if self._project_id:
-            return self._paginate(self._project_url(f"/boards/{board_id}/lists"))
-        if self._group_id:
-            return self._paginate(self._group_url(f"/boards/{board_id}/lists"))
-        raise ValueError(
-            "No scope selected for board lists. Use /project <id-or-path> or /group <id-or-path>."
+        return self._paginate(
+            self._scoped_url(f"/boards/{board_id}/lists", scope_name="board lists")
         )
 
     # -- Search ----------------------------------------------------------------
 
     def search_project(self, scope: str, search: str) -> list[dict]:
-        if self._project_id:
-            return self._paginate(
-                self._project_url("/search"),
-                params={"scope": scope, "search": search},
-            )
-        if self._group_id:
-            return self._paginate(
-                self._group_url("/search"),
-                params={"scope": scope, "search": search},
-            )
-        raise ValueError(
-            "No scope selected for search. Use /project <id-or-path> or /group <id-or-path>."
+        return self._paginate(
+            self._scoped_url("/search", scope_name="search"),
+            params={"scope": scope, "search": search},
         )
 
     # -- Milestones ------------------------------------------------------------
 
     def list_milestones(self, *, state: str = "active") -> list[dict]:
-        if self._project_id:
-            return self._paginate(self._project_url("/milestones"), params={"state": state})
-        if self._group_id:
-            return self._paginate(self._group_url("/milestones"), params={"state": state})
-        raise ValueError(
-            "No scope selected for milestones. Use /project <id-or-path> or /group <id-or-path>."
+        return self._paginate(
+            self._scoped_url("/milestones", scope_name="milestones"),
+            params={"state": state},
         )
 
     # -- Groups ----------------------------------------------------------------

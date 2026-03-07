@@ -5,38 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from gitlab_agent.gitlab_client import GitLabClient
-from gitlab_agent.tools.base import Tool
+from gitlab_agent.tools.base import JsonTool
 
 
-class SearchProjectTool(Tool):
-    @property
-    def name(self) -> str:
-        return "search_project"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Search across the project for issues, merge requests, milestones, or other items. "
-            "Useful for finding things by keyword when you don't know the exact IID."
-        )
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "scope": {
-                    "type": "string",
-                    "enum": ["issues", "merge_requests", "milestones", "notes", "wiki_blobs"],
-                    "description": "What to search for",
-                },
-                "search": {
-                    "type": "string",
-                    "description": "Search query text",
-                },
-            },
-            "required": ["scope", "search"],
-        }
+class SearchProjectTool(JsonTool):
+    tool_name = "search_project"
 
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         results = gitlab.search_project(kwargs["scope"], kwargs["search"])
@@ -59,28 +32,8 @@ class SearchProjectTool(Tool):
         return "\n".join(lines)
 
 
-class ListMilestonesTool(Tool):
-    @property
-    def name(self) -> str:
-        return "list_milestones"
-
-    @property
-    def description(self) -> str:
-        return "List milestones (sprints) in the project."
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "state": {
-                    "type": "string",
-                    "enum": ["active", "closed"],
-                    "description": "Filter by milestone state",
-                    "default": "active",
-                },
-            },
-        }
+class ListMilestonesTool(JsonTool):
+    tool_name = "list_milestones"
 
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         milestones = gitlab.list_milestones(state=kwargs.get("state", "active"))

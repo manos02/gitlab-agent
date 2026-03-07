@@ -6,11 +6,13 @@ any LLM provider can use it via function / tool calling.
 
 from __future__ import annotations
 
+import copy
 import json
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
 from gitlab_agent.gitlab_client import GitLabClient
+from gitlab_agent.resources import get_tool_schemas
 
 
 class Tool(ABC):
@@ -63,19 +65,47 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
+        self._schema_cache: list[dict[str, Any]] | None = None
 
     def register(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
+        self._schema_cache = None
 
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
 
     def all_schemas(self) -> list[dict[str, Any]]:
         """Return OpenAI-format tool schemas for all registered tools."""
-        return [t.to_openai_schema() for t in self._tools.values()]
+        if self._schema_cache is None:
+            self._schema_cache = [t.to_openai_schema() for t in self._tools.values()]
+        return self._schema_cache
 
     def names(self) -> list[str]:
         return list(self._tools.keys())
 
     def __len__(self) -> int:
         return len(self._tools)
+
+
+class JsonTool(Tool):
+    """Tool whose model-facing metadata is loaded from packaged JSON."""
+
+    tool_name: ClassVar[str]
+
+    @property
+    def name(self) -> str:
+        return self.tool_name
+
+    @property
+    def description(self) -> str:
+        return self._metadata()["description"]
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return copy.deepcopy(self._metadata()["parameters"])
+
+    def _metadata(self) -> dict[str, Any]:
+        metadata = get_tool_schemas().get(self.tool_name)
+        if metadata is None:
+            raise KeyError(f"Missing tool schema metadata for '{self.tool_name}'")
+        return metadata

@@ -3,21 +3,15 @@
 from __future__ import annotations
 
 import os
-from dataclasses import field
 from pathlib import Path
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
+from gitlab_agent.resources import get_llm_defaults
 
 
-# Default models per provider
-DEFAULT_MODELS: dict[str, str] = {
-    "openai": "gpt-4o",
-    "anthropic": "claude-sonnet-4-20250514",
-    "google": "gemini-2.5-flash",
-    "ollama": "qwen2.5",
-}
-
-DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
+LLM_DEFAULTS = get_llm_defaults()
+DEFAULT_MODELS: dict[str, str] = LLM_DEFAULTS["default_models"]
+DEFAULT_OLLAMA_BASE_URL = LLM_DEFAULTS["default_ollama_base_url"]
 
 
 class Config(BaseModel):
@@ -31,7 +25,7 @@ class Config(BaseModel):
 
     # GitLab
     gitlab_url: str = "https://gitlab.com"
-    gitlab_token: str = field(default="", repr=False)
+    gitlab_token: str = Field(default="", repr=False)
     gitlab_group_id: str = ""
 
     @field_validator("llm_provider")
@@ -45,9 +39,10 @@ class Config(BaseModel):
     @classmethod
     def from_env(cls, env_path: str | Path | None = None) -> Config:
         load_dotenv(env_path) # Load the env file with optional path
+        provider = os.getenv("LLM_PROVIDER")
         return cls(
-            llm_provider=os.getenv("LLM_PROVIDER"),
-            llm_model=os.getenv("LLM_MODEL") or DEFAULT_MODELS.get(cls.llm_provider),
+            llm_provider=provider,
+            llm_model=os.getenv("LLM_MODEL") or DEFAULT_MODELS.get(provider, ""),
             llm_key=os.getenv("API_KEY"),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL),
             gitlab_url=os.getenv("GITLAB_URL", "https://gitlab.com").rstrip("/"),

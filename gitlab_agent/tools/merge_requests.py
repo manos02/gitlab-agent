@@ -5,36 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from gitlab_agent.gitlab_client import GitLabClient
-from gitlab_agent.tools.base import Tool
+from gitlab_agent.tools.base import JsonTool
 
 
-class ListMergeRequestsTool(Tool):
-    @property
-    def name(self) -> str:
-        return "list_merge_requests"
-
-    @property
-    def description(self) -> str:
-        return "List merge requests in the project. Filter by state or search text."
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "state": {
-                    "type": "string",
-                    "enum": ["opened", "closed", "merged", "all"],
-                    "description": "Filter by MR state",
-                    "default": "opened",
-                },
-                "search": {
-                    "type": "string",
-                    "description": "Search MRs by title or description",
-                    "default": "",
-                },
-            },
-        }
+class ListMergeRequestsTool(JsonTool):
+    tool_name = "list_merge_requests"
 
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         mrs = gitlab.list_merge_requests(
@@ -56,30 +31,8 @@ class ListMergeRequestsTool(Tool):
         return "\n".join(lines)
 
 
-class GetMergeRequestTool(Tool):
-    @property
-    def name(self) -> str:
-        return "get_merge_request"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Get detailed information about a specific merge request,"
-            " including its pipeline status."
-        )
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "mr_iid": {
-                    "type": "integer",
-                    "description": "The IID (number) of the merge request",
-                },
-            },
-            "required": ["mr_iid"],
-        }
+class GetMergeRequestTool(JsonTool):
+    tool_name = "get_merge_request"
 
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         mr = gitlab.get_merge_request(kwargs["mr_iid"])
@@ -124,27 +77,8 @@ class GetMergeRequestTool(Tool):
         )
 
 
-class GetMergeRequestPipelinesTool(Tool):
-    @property
-    def name(self) -> str:
-        return "get_merge_request_pipelines"
-
-    @property
-    def description(self) -> str:
-        return "Get the list of pipelines for a specific merge request."
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "mr_iid": {
-                    "type": "integer",
-                    "description": "The IID of the merge request",
-                },
-            },
-            "required": ["mr_iid"],
-        }
+class GetMergeRequestPipelinesTool(JsonTool):
+    tool_name = "get_merge_request_pipelines"
 
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         pipelines = gitlab.get_merge_request_pipelines(kwargs["mr_iid"])

@@ -59,8 +59,6 @@ GITLAB_GROUP_ID=mygroup/platform  # optional default group path or ID (for cross
 
 **Getting a GitLab token:** Go to GitLab → Settings → Access Tokens → Create one with `api` scope.
 
-**Finding your project ID:** Go to your project page → it's shown under the project name, or in Settings → General.
-
 ### 3. Run
 
 ```bash
@@ -83,21 +81,20 @@ URL: https://gitlab.com/yourproject/-/issues/47
 | ----------------------- | ----------------------------------- |
 | `/help`                 | Show available commands             |
 | `/reset`                | Clear conversation history          |
-| `/project <id-or-path>` | Set active project for this session |
 | `/group <id-or-path>`   | Set active group for this session   |
 | `/quit`                 | Exit the agent                      |
 
 Group scope notes:
 
 - `list_issues`, `list_merge_requests`, `search_project`, and `list_milestones` work with either project or group scope.
-- If no project is active, the agent prefers group endpoints where available.
+- If no project alias matches, the agent prefers group endpoints where available.
 - Create/update/close issue, labels, and MR-by-IID operations remain project-scoped.
 
 Project alias notes:
 
 - On startup, the agent fetches projects from `/projects` and builds aliases in memory.
 - Aliases include project name/path variants mapped to project IDs.
-- When a user message includes one of these aliases, the agent auto-selects that project.
+- When a user message includes one of these aliases, the agent auto-selects that project for the current request.
 
 ## Architecture
 

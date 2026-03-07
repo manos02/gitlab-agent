@@ -6,43 +6,11 @@ import json
 from typing import Any
 
 from gitlab_agent.gitlab_client import GitLabClient
-from gitlab_agent.tools.base import Tool
+from gitlab_agent.tools.base import JsonTool
 
 
-class CreateIssueTool(Tool):
-    @property
-    def name(self) -> str:
-        return "create_issue"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Create a new issue in the GitLab project. "
-            "You can set a title, description, labels (comma-separated), and assignees."
-        )
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "title": {
-                    "type": "string",
-                    "description": "Title of the issue",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "Markdown body of the issue",
-                    "default": "",
-                },
-                "labels": {
-                    "type": "string",
-                    "description": "Comma-separated label names, e.g. 'bug,urgent'",
-                    "default": "",
-                },
-            },
-            "required": ["title"],
-        }
+class CreateIssueTool(JsonTool):
+    tool_name = "create_issue"
 
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         issue = gitlab.create_issue(
@@ -56,46 +24,8 @@ class CreateIssueTool(Tool):
         )
 
 
-class ListIssuesTool(Tool):
-    @property
-    def name(self) -> str:
-        return "list_issues"
-
-    @property
-    def description(self) -> str:
-        return (
-            "List issues in the project. Can filter by state (opened/closed/all), "
-            "labels, search text, or milestone."
-        )
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "state": {
-                    "type": "string",
-                    "enum": ["opened", "closed", "all"],
-                    "description": "Filter by issue state",
-                    "default": "opened",
-                },
-                "labels": {
-                    "type": "string",
-                    "description": "Comma-separated labels to filter by",
-                    "default": "",
-                },
-                "search": {
-                    "type": "string",
-                    "description": "Search issues by title or description",
-                    "default": "",
-                },
-                "milestone": {
-                    "type": "string",
-                    "description": "Filter by milestone title",
-                    "default": "",
-                },
-            },
-        }
+class ListIssuesTool(JsonTool):
+    tool_name = "list_issues"
 
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         issues = gitlab.list_issues(
@@ -120,27 +50,8 @@ class ListIssuesTool(Tool):
         return "\n".join(lines)
 
 
-class GetIssueTool(Tool):
-    @property
-    def name(self) -> str:
-        return "get_issue"
-
-    @property
-    def description(self) -> str:
-        return "Get detailed information about a specific issue by its IID (issue number)."
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "issue_iid": {
-                    "type": "integer",
-                    "description": "The IID (number) of the issue",
-                },
-            },
-            "required": ["issue_iid"],
-        }
+class GetIssueTool(JsonTool):
+    tool_name = "get_issue"
 
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         issue = gitlab.get_issue(kwargs["issue_iid"])
@@ -160,46 +71,8 @@ class GetIssueTool(Tool):
         )
 
 
-class UpdateIssueTool(Tool):
-    @property
-    def name(self) -> str:
-        return "update_issue"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Update an existing issue. Can change title, description, labels, or state."
-        )
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "issue_iid": {
-                    "type": "integer",
-                    "description": "The IID (number) of the issue to update",
-                },
-                "title": {
-                    "type": "string",
-                    "description": "New title",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "New description (Markdown)",
-                },
-                "labels": {
-                    "type": "string",
-                    "description": "New comma-separated labels (replaces existing)",
-                },
-                "state_event": {
-                    "type": "string",
-                    "enum": ["close", "reopen"],
-                    "description": "Change issue state",
-                },
-            },
-            "required": ["issue_iid"],
-        }
+class UpdateIssueTool(JsonTool):
+    tool_name = "update_issue"
 
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         iid = kwargs.pop("issue_iid")
@@ -209,27 +82,8 @@ class UpdateIssueTool(Tool):
         return f"Issue #{issue['iid']} updated. State: {issue['state']}, URL: {issue['web_url']}"
 
 
-class CloseIssueTool(Tool):
-    @property
-    def name(self) -> str:
-        return "close_issue"
-
-    @property
-    def description(self) -> str:
-        return "Close an issue by its IID."
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "issue_iid": {
-                    "type": "integer",
-                    "description": "The IID (number) of the issue to close",
-                },
-            },
-            "required": ["issue_iid"],
-        }
+class CloseIssueTool(JsonTool):
+    tool_name = "close_issue"
 
     def run(self, gitlab: GitLabClient, **kwargs: Any) -> str:
         issue = gitlab.close_issue(kwargs["issue_iid"])

@@ -54,14 +54,14 @@ def main() -> None:
         console.print(
             f"[warning]GitLab: {config.gitlab_url} (no project/group selected)[/warning]"
         )
-        console.print("[info]Tip: use /group <id-or-path> or /project <id-or-path>. Project aliases refresh automatically.[/info]")
+        console.print("[info]Tip: use /group <id-or-path>. Project aliases refresh automatically.[/info]")
     console.print()
 
     agent = Agent(config, on_tool_call=_on_tool_call)
 
     # Map gitlab projects -> ids if possible
     console.print("[info]⌛ Mapping project ids to project names [/info]")
-    agent.project_aliases = agent._initialize_project_aliases()
+    agent.project_aliases = agent.initialize_project_aliases()
 
     try:
         while True:
@@ -83,27 +83,6 @@ def main() -> None:
                 elif cmd in ("/reset", "/clear"):
                     agent.reset()
                     console.print("[info]Conversation cleared.[/info]\n")
-                    continue
-                # Command to set project that the user wants to query on
-                elif cmd.startswith("/project"):
-                    value = user_input[len("/project"):].strip()
-                    if not value:
-                        current = agent.gitlab.current_project()
-                        if current:
-                            console.print(f"[info]Current project: {current}[/info]\n")
-                        else:
-                            console.print(
-                                "[warning]No project selected. Use /project <id-or-path>[/warning]\n"
-                            )
-                        continue
-
-                    try:
-                        agent.gitlab.set_project(value)
-                    except ValueError as e:
-                        console.print(f"[error]{e}[/error]\n")
-                        continue
-
-                    console.print(f"[info]Active project set to: {value}[/info]\n")
                     continue
                 elif cmd.startswith("/group"):
                     value = user_input[len("/group"):].strip()
@@ -130,7 +109,6 @@ def main() -> None:
                         Panel(
                             "[bold]/quit[/bold]  – Exit the agent\n"
                             "[bold]/reset[/bold] – Clear conversation history\n"
-                            "[bold]/project <id-or-path>[/bold] – Set active GitLab project\n"
                             "[bold]/group <id-or-path>[/bold] – Set active GitLab group\n"
                             "[bold]/help[/bold]  – Show this help\n"
                             "[dim]Project names are auto-detected from cached group projects.[/dim]\n"
