@@ -122,9 +122,9 @@ class GitLabClient:
             resp = self._client.get(path, params=params)
             resp.raise_for_status()
             data = resp.json()
+            results.extend(data)
             if not resp.headers['x-next-page']: # if we fetched all the results then x-next-page will be empty string 
                 break
-            results.extend(data)
         return results
 
     # -- Generic public API ----------------------------------------------------
