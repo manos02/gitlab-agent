@@ -110,18 +110,19 @@ class GitLabClient:
         path: str,
         *,
         params: dict[str, Any] | None = None,
-        max_pages: int = 5,
-    ) -> list[Any]:
+        max_pages: int = 10,
+    ):
         """Fetch multiple pages and merge results."""
         params = dict(params or {})
-        params.setdefault("per_page", 20)
-        results: list[Any] = []
+        params.setdefault("per_page", 100) # max page result for gitlab api
+        results = []
+        page = 1
         for page in range(1, max_pages + 1):
             params["page"] = page
             resp = self._client.get(path, params=params)
             resp.raise_for_status()
             data = resp.json()
-            if not data:
+            if not resp.headers['x-next-page']: # if we fetched all the results then x-next-page will be empty string 
                 break
             results.extend(data)
         return results
