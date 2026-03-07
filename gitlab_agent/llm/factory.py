@@ -22,7 +22,7 @@ def create_llm_provider(config: Config) -> BaseLLMProvider:
         return OpenAIProvider(
             config,
             base_url=config.ollama_base_url,
-            api_key="ollama",  # Ollama doesn't need a real key but the client requires one
+            llm_key="ollama",  # Ollama doesn't need a real key but the client requires one
         )
     else:
         raise ValueError(f"Unknown LLM provider: {config.llm_provider}")

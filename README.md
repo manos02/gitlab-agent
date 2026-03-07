@@ -15,11 +15,11 @@ Talk to your GitLab project like you'd talk to a teammate:
 
 ## Supported LLM Providers
 
-| Provider  | Models                      | Env Variable        |
-| --------- | --------------------------- | ------------------- |
-| Google    | Gemini 2.0 Flash, Pro, etc. | `GOOGLE_API_KEY`    |
-| OpenAI    | GPT-4o, GPT-4, etc.         | `OPENAI_API_KEY`    |
-| Anthropic | Claude Sonnet, Opus, etc.   | `ANTHROPIC_API_KEY` |
+| Provider  | Models                             | Env Variable        |
+| --------- | ---------------------------------- | ------------------- |
+| Google    | Gemini 2.0 Flash, Pro, etc.        | `GOOGLE_API_KEY`    |
+| OpenAI    | GPT-4o, GPT-4, etc.                | `OPENAI_API_KEY`    |
+| Anthropic | Claude Sonnet, Opus, etc.          | `ANTHROPIC_API_KEY` |
 | Ollama    | Qwen 2.5, Llama 3, any local model | None (runs locally) |
 
 Switch providers with a single env var — no code changes needed.
@@ -79,21 +79,23 @@ URL: https://gitlab.com/yourproject/-/issues/47
 
 ## CLI Commands
 
-| Command  | Description                |
-| -------- | -------------------------- |
-| `/help`  | Show available commands    |
-| `/reset` | Clear conversation history |
+| Command                 | Description                         |
+| ----------------------- | ----------------------------------- |
+| `/help`                 | Show available commands             |
+| `/reset`                | Clear conversation history          |
 | `/project <id-or-path>` | Set active project for this session |
-| `/group <id-or-path>` | Set active group for this session |
-| `/quit`  | Exit the agent             |
+| `/group <id-or-path>`   | Set active group for this session   |
+| `/quit`                 | Exit the agent                      |
 
 Group scope notes:
+
 - `list_issues`, `list_merge_requests`, `search_project`, and `list_milestones` work with either project or group scope.
 - If no project is active, the agent prefers group endpoints where available.
 - Create/update/close issue, labels, and MR-by-IID operations remain project-scoped.
 
 Project alias notes:
-- On startup, the agent fetches projects from `groups/:id/projects` (using `GITLAB_GROUP_ID`) and builds aliases in memory.
+
+- On startup, the agent fetches projects from `/projects` and builds aliases in memory.
 - Aliases include project name/path variants mapped to project IDs.
 - When a user message includes one of these aliases, the agent auto-selects that project.
 

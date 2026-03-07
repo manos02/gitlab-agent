@@ -12,10 +12,10 @@ from gitlab_agent.llm.base import BaseLLMProvider, LLMResponse, ToolCall
 
 
 class OpenAIProvider(BaseLLMProvider):
-    def __init__(self, config: Config, *, base_url: str | None = None, api_key: str | None = None) -> None:
+    def __init__(self, config: Config, *, base_url: str | None = None, llm_key: str | None = None) -> None:
         self._model = config.llm_model
         self._client = OpenAI(
-            api_key=api_key or config.openai_api_key,
+            api_key=llm_key or config.llm_key,
             base_url=base_url,
         )
 

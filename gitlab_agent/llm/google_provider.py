@@ -89,7 +89,7 @@ def _openai_messages_to_gemini(
 class GoogleProvider(BaseLLMProvider):
     def __init__(self, config: Config) -> None:
         self._model = config.llm_model
-        self._client = genai.Client(api_key=config.google_api_key)
+        self._client = genai.Client(api_key=config.llm_key)
 
     @property
     def model_name(self) -> str:

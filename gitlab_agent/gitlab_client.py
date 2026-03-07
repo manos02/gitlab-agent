@@ -44,6 +44,10 @@ class GitLabClient:
             raise ValueError("Project cannot be empty")
         self._project_id = value
 
+    def clear_project(self) -> None:
+        """Clear active project so calls can fall back to group scope."""
+        self._project_id = ""
+
     def set_group(self, group_id_or_path: str) -> None:
         """Set active group for group-scoped calls.
 
@@ -144,6 +148,186 @@ class GitLabClient:
     ) -> list[Any]:
         """Public generic pagination method for rebuilding endpoint wrappers from scratch."""
         return self._paginate(path, params=params, max_pages=max_pages)
+
+    # -- Projects --------------------------------------------------------------
+
+    def list_projects(
+        self,
+        *,
+        search: str = "",
+        membership: bool = True,
+        archived: bool = False,
+    ) -> list[dict]:
+        params: dict[str, Any] = {
+            "simple": True,
+            "membership": membership,
+            "archived": archived,
+        }
+        if search:
+            params["search"] = search
+        return self._paginate("/projects", params=params)
+
+    # -- Issues ----------------------------------------------------------------
+
+    def create_issue(
+        self,
+        title: str,
+        *,
+        description: str = "",
+        labels: str = "",
+        assignee_ids: list[int] | None = None,
+        milestone_id: int | None = None,
+    ) -> dict:
+        body: dict[str, Any] = {"title": title}
+        if description:
+            body["description"] = description
+        if labels:
+            body["labels"] = labels
+        if assignee_ids:
+            body["assignee_ids"] = assignee_ids
+        if milestone_id:
+            body["milestone_id"] = milestone_id
+        return self._request("POST", self._project_url("/issues"), json=body)
+
+    def get_issue(self, issue_iid: int) -> dict:
+        return self._request("GET", self._project_url(f"/issues/{issue_iid}"))
+
+    def list_issues(
+        self,
+        *,
+        state: str = "opened",
+        labels: str = "",
+        search: str = "",
+        milestone: str = "",
+    ) -> list[dict]:
+        params: dict[str, Any] = {"state": state}
+        if labels:
+            params["labels"] = labels
+        if search:
+            params["search"] = search
+        if milestone:
+            params["milestone"] = milestone
+        if self._project_id:
+            return self._paginate(self._project_url("/issues"), params=params)
+        if self._group_id:
+            return self._paginate(self._group_url("/issues"), params=params)
+        raise ValueError(
+            "No scope selected for listing issues. Use /project <id-or-path> or /group <id-or-path>."
+        )
+
+    def update_issue(self, issue_iid: int, **fields: Any) -> dict:
+        return self._request("PUT", self._project_url(f"/issues/{issue_iid}"), json=fields)
+
+    def close_issue(self, issue_iid: int) -> dict:
+        return self.update_issue(issue_iid, state_event="close")
+
+    # -- Labels ----------------------------------------------------------------
+
+    def list_labels(self) -> list[dict]:
+        return self._paginate(self._project_url("/labels"))
+
+    def create_label(self, name: str, color: str = "#428BCA", description: str = "") -> dict:
+        body: dict[str, Any] = {"name": name, "color": color}
+        if description:
+            body["description"] = description
+        return self._request("POST", self._project_url("/labels"), json=body)
+
+    # -- Merge Requests --------------------------------------------------------
+
+    def list_merge_requests(
+        self,
+        *,
+        state: str = "opened",
+        search: str = "",
+    ) -> list[dict]:
+        params: dict[str, Any] = {"state": state}
+        if search:
+            params["search"] = search
+        if self._project_id:
+            return self._paginate(self._project_url("/merge_requests"), params=params)
+        if self._group_id:
+            return self._paginate(self._group_url("/merge_requests"), params=params)
+        raise ValueError(
+            "No scope selected for listing merge requests. Use /project <id-or-path> or /group <id-or-path>."
+        )
+
+    def get_merge_request(self, mr_iid: int) -> dict:
+        return self._request("GET", self._project_url(f"/merge_requests/{mr_iid}"))
+
+    def get_merge_request_pipelines(self, mr_iid: int) -> list[dict]:
+        return self._paginate(self._project_url(f"/merge_requests/{mr_iid}/pipelines"))
+
+    def get_merge_request_approvals(self, mr_iid: int) -> dict:
+        return self._request("GET", self._project_url(f"/merge_requests/{mr_iid}/approvals"))
+
+    # -- Boards ----------------------------------------------------------------
+
+    def list_boards(self) -> list[dict]:
+        if self._project_id:
+            return self._paginate(self._project_url("/boards"))
+        if self._group_id:
+            return self._paginate(self._group_url("/boards"))
+        raise ValueError(
+            "No scope selected for boards. Use /project <id-or-path> or /group <id-or-path>."
+        )
+
+    def list_board_lists(self, board_id: int) -> list[dict]:
+        if self._project_id:
+            return self._paginate(self._project_url(f"/boards/{board_id}/lists"))
+        if self._group_id:
+            return self._paginate(self._group_url(f"/boards/{board_id}/lists"))
+        raise ValueError(
+            "No scope selected for board lists. Use /project <id-or-path> or /group <id-or-path>."
+        )
+
+    # -- Search ----------------------------------------------------------------
+
+    def search_project(self, scope: str, search: str) -> list[dict]:
+        if self._project_id:
+            return self._paginate(
+                self._project_url("/search"),
+                params={"scope": scope, "search": search},
+            )
+        if self._group_id:
+            return self._paginate(
+                self._group_url("/search"),
+                params={"scope": scope, "search": search},
+            )
+        raise ValueError(
+            "No scope selected for search. Use /project <id-or-path> or /group <id-or-path>."
+        )
+
+    # -- Milestones ------------------------------------------------------------
+
+    def list_milestones(self, *, state: str = "active") -> list[dict]:
+        if self._project_id:
+            return self._paginate(self._project_url("/milestones"), params={"state": state})
+        if self._group_id:
+            return self._paginate(self._group_url("/milestones"), params={"state": state})
+        raise ValueError(
+            "No scope selected for milestones. Use /project <id-or-path> or /group <id-or-path>."
+        )
+
+    # -- Groups ----------------------------------------------------------------
+
+    def get_group(self) -> dict:
+        return self._request("GET", self._group_url(""))
+
+    def list_group_projects(
+        self,
+        *,
+        search: str = "",
+        include_subgroups: bool = True,
+        with_shared: bool = False,
+    ) -> list[dict]:
+        params: dict[str, Any] = {
+            "include_subgroups": include_subgroups,
+            "with_shared": with_shared,
+            "simple": True,
+        }
+        if search:
+            params["search"] = search
+        return self._paginate(self._group_url("/projects"), params=params)
 
     # -- Cleanup ---------------------------------------------------------------
 

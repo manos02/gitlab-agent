@@ -26,7 +26,7 @@ class Config(BaseModel):
     # LLM
     llm_provider: str
     llm_model: str
-    model_key: str
+    llm_key: str
     ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
 
     # GitLab
@@ -48,7 +48,7 @@ class Config(BaseModel):
         return cls(
             llm_provider=os.getenv("LLM_PROVIDER"),
             llm_model=os.getenv("LLM_MODEL") or DEFAULT_MODELS.get(cls.llm_provider),
-            model_key=os.getenv("API_KEY"),
+            llm_key=os.getenv("API_KEY"),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL),
             gitlab_url=os.getenv("GITLAB_URL", "https://gitlab.com").rstrip("/"),
             gitlab_token=os.getenv("GITLAB_TOKEN", ""),

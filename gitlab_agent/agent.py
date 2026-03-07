@@ -36,6 +36,15 @@ Guidelines:
 MAX_TOOL_ROUNDS = 10  # Safety limit on tool-calling rounds per user message
 
 
+def _normalize_for_alias_match(value: str) -> str:
+    """Normalize text for alias matching.
+
+    Lowercase and collapse non-alphanumeric separators to single spaces.
+    """
+    normalized = re.sub(r"[^a-z0-9]+", " ", value.lower())
+    return " ".join(normalized.split())
+
+
 class Agent:
     """The core agent that connects user input → LLM → tools → GitLab."""
 
@@ -53,7 +62,8 @@ class Agent:
         self.gitlab = gitlab or GitLabClient(config)
         self.registry = registry or create_default_registry()
         self.on_tool_call = on_tool_call  # callback for UI to display tool activity
-        self.project_aliases = self._initialize_project_aliases()
+        self.project_aliases = None
+        self._project_set_by_alias = False
 
         self.messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -138,18 +148,26 @@ class Agent:
     def _resolve_project_alias_from_message(self, user_message: str) -> None:
         """Set active project when user mentions a known project alias in natural language."""
         if not self.project_aliases:
+            if self._project_set_by_alias:
+                self.gitlab.clear_project()
+                self._project_set_by_alias = False
             return
 
         text = user_message.lower()
+        normalized_text = _normalize_for_alias_match(user_message)
         matched_name = ""
         matched_project = ""
 
         for alias in sorted(self.project_aliases.keys(), key=len, reverse=True):
-            if re.fullmatch(r"[\w\s]+", alias):
-                pattern = rf"\b{re.escape(alias)}\b"
-                matched = bool(re.search(pattern, text))
-            else:
-                matched = alias in text
+            alias_text = alias.strip().lower()
+            if not alias_text:
+                continue
+
+            matched = alias_text in text
+            if not matched:
+                normalized_alias = _normalize_for_alias_match(alias_text)
+                if normalized_alias:
+                    matched = f" {normalized_alias} " in f" {normalized_text} "
 
             if matched:
                 matched_name = alias
@@ -157,10 +175,14 @@ class Agent:
                 break
 
         if not matched_name:
+            if self._project_set_by_alias:
+                self.gitlab.clear_project()
+                self._project_set_by_alias = False
             return
 
         try:
             self.gitlab.set_project(matched_project)
+            self._project_set_by_alias = True
             if self.on_tool_call:
                 self.on_tool_call("set_active_project", {"project_alias": matched_name, "project": matched_project})
         except ValueError:
