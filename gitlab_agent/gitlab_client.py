@@ -21,7 +21,7 @@ class GitLabClient:
         self._client = httpx.Client(
             base_url=self._base_url,
             headers=self._headers,
-            timeout=30.0,
+            timeout=config.gitlab_timeout,
         )
 
     # -- helpers ---------------------------------------------------------------

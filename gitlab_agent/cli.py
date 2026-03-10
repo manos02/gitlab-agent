@@ -116,6 +116,27 @@ async def _run() -> None:
                 elif cmd == "/clear-project":
                     console.print(f"[info]{await agent.clear_project()}[/info]\n")
                     continue
+                elif cmd.startswith("/projects"):
+                    search = user_input[len("/projects"):].strip()
+                    try:
+                        result = await agent.list_group_projects(search=search)
+                    except RuntimeError as e:
+                        console.print(f"[error]{e}[/error]\n")
+                        continue
+
+                    console.print(Markdown(result))
+                    console.print()
+                    continue
+                elif cmd == "/catalog":
+                    try:
+                        result = await agent.get_project_catalog(refresh=True, limit=200)
+                    except RuntimeError as e:
+                        console.print(f"[error]{e}[/error]\n")
+                        continue
+
+                    console.print(Markdown(result))
+                    console.print()
+                    continue
                 elif cmd in ("/help", "/h"):
                     console.print(
                         Panel(
@@ -124,6 +145,8 @@ async def _run() -> None:
                             "[bold]/group <id-or-path>[/bold] – Set active GitLab group\n"
                             "[bold]/project <id-or-path>[/bold] – Set active GitLab project\n"
                             "[bold]/clear-project[/bold] – Clear active project scope\n"
+                            "[bold]/projects [search][/bold] – List projects in the active group\n"
+                            "[bold]/catalog[/bold] – Refresh and show the cached project catalog\n"
                             "[bold]/help[/bold]  – Show this help\n"
                             "[dim]Scope is stored in the MCP session and reused across tool calls.[/dim]\n"
                             "\nJust type naturally to interact with GitLab:\n"

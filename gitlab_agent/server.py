@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import re
 
 from fastmcp import Context, FastMCP
 
@@ -14,6 +15,8 @@ from gitlab_agent.gitlab_client import GitLabClient
 SERVER_INSTRUCTIONS = """This server exposes GitLab issue, merge request, board, search, label, and group tools.
 
 Use set_active_group to choose a default group scope.
+If a user mentions a project name instead of an exact project path, use set_active_project_from_query.
+Use get_project_catalog to inspect the cached project map for the current session.
 Use set_active_project when a task requires project-scoped operations like creating issues or reading labels.
 Listing and search tools prefer the active project and fall back to the active group when possible.
 Use get_active_scope to inspect the current MCP session scope.
@@ -21,6 +24,7 @@ Use get_active_scope to inspect the current MCP session scope.
 
 ACTIVE_GROUP_KEY = "active_group"
 ACTIVE_PROJECT_KEY = "active_project"
+PROJECT_CACHE_KEY = "project_cache"
 
 mcp = FastMCP(
     name="GitLab Agent",
@@ -53,6 +57,157 @@ async def _current_scope(ctx: Context) -> tuple[str | None, str | None]:
         client.close()
 
 
+def _normalize_text(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+    return re.sub(r"\s+", " ", normalized)
+
+
+def _meaningful_tokens(value: str) -> list[str]:
+    return [token for token in _normalize_text(value).split() if len(token) >= 2]
+
+
+def _project_aliases(project: dict) -> list[str]:
+    values = [
+        project.get("name", ""),
+        project.get("path", ""),
+        project.get("name_with_namespace", ""),
+        project.get("path_with_namespace", ""),
+    ]
+    aliases: list[str] = []
+    for value in values:
+        normalized = _normalize_text(value)
+        if normalized and normalized not in aliases:
+            aliases.append(normalized)
+    return aliases
+
+
+def _serialize_project(project: dict) -> dict[str, object]:
+    aliases = _project_aliases(project)
+    token_set: set[str] = set()
+    for alias in aliases:
+        token_set.update(_meaningful_tokens(alias))
+    project_ref = project.get("path_with_namespace") or str(project.get("id", ""))
+    return {
+        "project_id": str(project.get("id", "")),
+        "project_ref": project_ref,
+        "name": project.get("name", ""),
+        "path_with_namespace": project.get("path_with_namespace", ""),
+        "name_with_namespace": project.get("name_with_namespace", ""),
+        "aliases": aliases,
+        "tokens": sorted(token_set),
+    }
+
+
+def _project_scope_label(active_group: str | None) -> str:
+    if active_group:
+        return f"group {active_group}"
+    return "your accessible projects"
+
+
+def _format_project_catalog(
+    projects: list[dict[str, object]],
+    *,
+    active_group: str | None,
+    limit: int,
+) -> str:
+    if not projects:
+        return f"No cached projects for {_project_scope_label(active_group)}."
+
+    lines = [
+        f"Cached projects for {_project_scope_label(active_group)}: {len(projects)} total"
+    ]
+    for project in projects[:limit]:
+        project_id = project.get("project_id", "")
+        project_path = project.get("path_with_namespace") or project.get("project_ref", "")
+        aliases = ", ".join(str(alias) for alias in project.get("aliases", [])[:3])
+        lines.append(f"  - id={project_id} path={project_path} aliases={aliases}")
+
+    if len(projects) > limit:
+        lines.append(f"  ... {len(projects) - limit} more project(s) omitted")
+    return "\n".join(lines)
+
+
+def _score_project_match(query: str, project: dict[str, object]) -> int:
+    normalized_query = _normalize_text(query)
+    if not normalized_query:
+        return 0
+
+    query_tokens = set(_meaningful_tokens(normalized_query))
+    aliases = [str(alias) for alias in project.get("aliases", [])]
+    project_tokens = {str(token) for token in project.get("tokens", [])}
+
+    score = 0
+    for alias in aliases:
+        if normalized_query == alias:
+            score = max(score, 120)
+        elif normalized_query in alias:
+            score = max(score, 95)
+        elif alias in normalized_query and len(alias) >= 4:
+            score = max(score, 85)
+
+    overlap = len(query_tokens & project_tokens)
+    if overlap:
+        score += overlap * 12
+        if query_tokens and query_tokens.issubset(project_tokens):
+            score += 15
+
+    return score
+
+
+def _select_project_match(
+    query: str,
+    projects: list[dict[str, object]],
+) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
+    ranked = []
+    for project in projects:
+        score = _score_project_match(query, project)
+        if score > 0:
+            ranked.append((score, project))
+
+    if not ranked:
+        return None, []
+
+    ranked.sort(key=lambda item: (item[0], str(item[1].get("path_with_namespace", ""))), reverse=True)
+    top_score = ranked[0][0]
+    top_projects = [project for score, project in ranked if score == top_score]
+
+    if top_score >= 95 and len(top_projects) == 1:
+        return top_projects[0], []
+
+    if len(ranked) == 1 and top_score >= 55:
+        return ranked[0][1], []
+
+    if len(top_projects) == 1 and len(ranked) >= 2 and top_score - ranked[1][0] >= 18:
+        return top_projects[0], []
+
+    return None, [project for _, project in ranked[:5]]
+
+
+async def _load_project_cache(
+    ctx: Context,
+    *,
+    force_refresh: bool = False,
+) -> tuple[list[dict[str, object]], str | None]:
+    active_group = await ctx.get_state(ACTIVE_GROUP_KEY)
+    if not force_refresh:
+        cached_projects = await ctx.get_state(PROJECT_CACHE_KEY)
+        if cached_projects is not None:
+            return cached_projects, active_group
+
+    gitlab = await _client_from_context(ctx)
+    try:
+        if active_group:
+            projects = gitlab.list_group_projects(include_subgroups=True)
+        else:
+            projects = gitlab.list_projects()
+    finally:
+        gitlab.close()
+
+    serialized_projects = [_serialize_project(project) for project in projects]
+    await ctx.set_state(PROJECT_CACHE_KEY, serialized_projects)
+    return serialized_projects, active_group
+
+
 def _labels_text(values: list[str]) -> str:
     return ", ".join(values) if values else "None"
 
@@ -76,7 +231,11 @@ async def set_active_group(group_id_or_path: str, ctx: Context) -> str:
 
     await ctx.set_state(ACTIVE_GROUP_KEY, value)
     await ctx.delete_state(ACTIVE_PROJECT_KEY)
-    return f"Active group set to: {value}. Active project cleared."
+    projects, _ = await _load_project_cache(ctx, force_refresh=True)
+    return (
+        f"Active group set to: {value}. Active project cleared. "
+        f"Cached {len(projects)} project aliases for this group."
+    )
 
 
 @mcp.tool
@@ -88,6 +247,58 @@ async def set_active_project(project_id_or_path: str, ctx: Context) -> str:
 
     await ctx.set_state(ACTIVE_PROJECT_KEY, value)
     return f"Active project set to: {value}"
+
+
+@mcp.tool
+async def get_project_catalog(
+    refresh: bool = False,
+    limit: int = 200,
+    ctx: Context | None = None,
+) -> str:
+    """Return the cached project map for this session, refreshing it if requested."""
+    if ctx is None:
+        raise RuntimeError("Context is required")
+    projects, active_group = await _load_project_cache(ctx, force_refresh=refresh)
+    safe_limit = max(1, min(limit, 500))
+    return _format_project_catalog(projects, active_group=active_group, limit=safe_limit)
+
+
+@mcp.tool
+async def set_active_project_from_query(project_query: str, ctx: Context) -> str:
+    """Resolve a mentioned project name or alias and set it as the active project."""
+    query = project_query.strip()
+    if not query:
+        raise ValueError("Project query cannot be empty")
+
+    projects, active_group = await _load_project_cache(ctx)
+    matched_project, candidates = _select_project_match(query, projects)
+
+    if matched_project is None:
+        if not candidates:
+            return (
+                f"No project match found for '{query}' in {_project_scope_label(active_group)}. "
+                "Use list_group_projects to inspect available projects or set_active_project with an exact path."
+            )
+
+        lines = [
+            f"Project query '{query}' is ambiguous in {_project_scope_label(active_group)}. "
+            "Choose one of these exact project paths:"
+        ]
+        for candidate in candidates:
+            lines.append(
+                f"  - {candidate.get('path_with_namespace') or candidate.get('project_ref')}"
+            )
+        return "\n".join(lines)
+
+    project_ref = str(matched_project.get("project_ref", "")).strip()
+    if not project_ref:
+        return f"Matched '{query}', but the project reference was empty."
+
+    await ctx.set_state(ACTIVE_PROJECT_KEY, project_ref)
+    return (
+        f"Active project set to: {project_ref} "
+        f"(matched from '{query}')"
+    )
 
 
 @mcp.tool
@@ -505,6 +716,9 @@ async def list_group_projects(
         gitlab.close()
     if not projects:
         return "No group projects found."
+
+    if search == "" and include_subgroups:
+        await ctx.set_state(PROJECT_CACHE_KEY, [_serialize_project(project) for project in projects])
 
     lines = [f"Found {len(projects)} group project(s):\n"]
     for project in projects[:30]:

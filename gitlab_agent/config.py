@@ -27,6 +27,7 @@ class Config(BaseModel):
     gitlab_url: str = "https://gitlab.com"
     gitlab_token: str = Field(default="", repr=False)
     gitlab_group_id: str = ""
+    gitlab_timeout: float = 30.0
 
     @field_validator("llm_provider")
     @classmethod
@@ -62,4 +63,5 @@ class Config(BaseModel):
             gitlab_url=os.getenv("GITLAB_URL", "https://gitlab.com").rstrip("/"),
             gitlab_token=os.getenv("GITLAB_TOKEN", ""),
             gitlab_group_id=os.getenv("GITLAB_GROUP_ID", ""),
+            gitlab_timeout=float(os.getenv("GITLAB_TIMEOUT", "30")),
         )
