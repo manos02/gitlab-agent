@@ -1,62 +1,95 @@
-"""Core agent loop – orchestrates the LLM ↔ tool-calling conversation."""
+"""CLI chat agent backed by LLM function calling and a FastMCP client session."""
 
 from __future__ import annotations
 
 import json
 from typing import Any, Callable
 
+from fastmcp import Client, FastMCP
+
 from gitlab_agent.config import Config
-from gitlab_agent.gitlab_client import GitLabClient
 from gitlab_agent.llm.base import BaseLLMProvider
 from gitlab_agent.llm.factory import create_llm_provider
-from gitlab_agent.resources import get_agent_settings
-from gitlab_agent.tools.base import ToolRegistry
-from gitlab_agent.tools.registry import create_default_registry
-from gitlab_agent.tools.utils import (
-    _aliases_from_projects,
-    _best_project_alias_match,
-)
+from gitlab_agent.server import mcp
 
 
-AGENT_SETTINGS = get_agent_settings()
-SYSTEM_PROMPT = AGENT_SETTINGS["system_prompt"]
-MAX_TOOL_ROUNDS = AGENT_SETTINGS["max_tool_rounds"]
+SYSTEM_PROMPT = """You are GitLab Agent, an AI assistant that helps users manage their GitLab projects through natural language.
+
+You have access to tools that let you interact with the GitLab API. Use them to fulfill the user's requests. You may need to chain multiple tool calls to complete a request.
+
+Guidelines:
+- Be concise and helpful.
+- When creating issues, ask for missing information only if truly ambiguous.
+- When searching, try multiple approaches if the first doesn't find results.
+- Always confirm what you did with a clear summary.
+- If a tool call fails, explain the error and suggest a fix.
+- Format IIDs as #N for issues and !N for merge requests.
+"""
+MAX_TOOL_ROUNDS = 10
+
+
+def _fastmcp_tools_to_openai_schema(tools: list[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description or "",
+                "parameters": tool.inputSchema,
+            },
+        }
+        for tool in tools
+    ]
+
+
+def _tool_result_to_text(result: Any) -> str:
+    if getattr(result, "data", None) is not None:
+        data = result.data
+        if isinstance(data, str):
+            return data
+        return json.dumps(data, ensure_ascii=True)
+
+    content = getattr(result, "content", None) or []
+    text_parts = [block.text for block in content if getattr(block, "type", None) == "text"]
+    if text_parts:
+        return "\n".join(text_parts)
+    return ""
 
 
 class Agent:
-    """The core agent that connects user input → LLM → tools → GitLab."""
+    """Chat agent that uses provider function-calling against the FastMCP server."""
 
     def __init__(
         self,
         config: Config,
         *,
         llm: BaseLLMProvider | None = None,
-        gitlab: GitLabClient | None = None,
-        registry: ToolRegistry | None = None,
+        mcp_server: FastMCP | None = None,
         on_tool_call: Callable[[str, dict], None] | None = None,
     ) -> None:
         self.config = config
         self.llm = llm or create_llm_provider(config)
-        self.gitlab = gitlab or GitLabClient(config)
-        self.registry = registry or create_default_registry()
+        self.client = Client(mcp_server or mcp)
         self.on_tool_call = on_tool_call  # callback for UI to display tool activity
-        self.project_aliases = None
-        self._project_set_by_alias = False
-        self.tool_schemas = self.registry.all_schemas()
+        self.tool_schemas: list[dict[str, Any]] = []
+        self._opened = False
 
         self.messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
         ]
 
-    def chat(self, user_message: str) -> str:
-        """Process a user message and return the agent's text response.
+    async def open(self) -> None:
+        if self._opened:
+            return
+        await self.client.__aenter__()
+        self.tool_schemas = _fastmcp_tools_to_openai_schema(await self.client.list_tools())
+        self._opened = True
 
-        This may involve multiple LLM ↔ tool rounds before producing a final answer.
-        """
-        project_matched = self._resolve_project_alias_from_message(user_message)
-        self.messages.append(
-            {"role": "system", "content": self._scope_hint_message(project_matched)}
-        )
+    async def chat(self, user_message: str) -> str:
+        """Process a user message and return the agent's text response."""
+        if not self._opened:
+            await self.open()
+
         self.messages.append({"role": "user", "content": user_message})
 
         try:
@@ -91,14 +124,11 @@ class Agent:
                     if self.on_tool_call:
                         self.on_tool_call(tc.name, tc.arguments)
 
-                    tool = self.registry.get(tc.name)
-                    if tool is None:
-                        result = f"Error: Unknown tool '{tc.name}'"
-                    else:
-                        try:
-                            result = tool.run(self.gitlab, **tc.arguments)
-                        except Exception as e:
-                            result = f"Error executing {tc.name}: {e}"
+                    try:
+                        call_result = await self.client.call_tool(tc.name, tc.arguments)
+                        result = _tool_result_to_text(call_result)
+                    except Exception as e:
+                        result = f"Error executing {tc.name}: {e}"
 
                     self.messages.append(
                         {
@@ -112,71 +142,36 @@ class Agent:
             # Exceeded max rounds
             return "I've reached the maximum number of tool-calling rounds. Please try a simpler request or break it into steps."
         except Exception as e:
-            # Remove transient request-scoping messages so conversation stays clean
-            self.messages.pop()
             self.messages.pop()
             raise RuntimeError(f"LLM request failed: {e}") from e
-        finally:
-            if self._project_set_by_alias:
-                self.gitlab.clear_project()
-                self._project_set_by_alias = False
 
     def reset(self) -> None:
-        """Clear conversation history (keep system prompt)."""
+        """Clear conversation history while keeping the MCP session state."""
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-    def close(self) -> None:
-        """Clean up resources."""
-        self.gitlab.close()
+    async def get_active_scope(self) -> str:
+        result = await self.client.call_tool("get_active_scope")
+        return _tool_result_to_text(result)
 
-    def _scope_hint_message(self, project_matched: bool) -> str:
-        """Describe the scope the model should assume for the current request."""
-        current_project = self.gitlab.current_project()
-        if project_matched and current_project:
-            return (
-                f"Scope hint: the user message matched project '{current_project}'. "
-                "Prefer project-scoped calls for this request."
-            )
-
-        current_group = self.gitlab.current_group()
-        if current_group:
-            return (
-                f"Scope hint: no project alias matched in this user message. The active default "
-                f"scope is GitLab group '{current_group}'. Treat this as a broader group-level "
-                "request, prefer group-scoped listing/search calls, and only ask for a specific "
-                "project if the task truly requires project scope."
-            )
-
-        return (
-            "Scope hint: no project alias matched and no default group is set. Ask for a project "
-            "or group only when the requested action needs one."
+    async def set_group(self, group_id_or_path: str) -> str:
+        result = await self.client.call_tool(
+            "set_active_group", {"group_id_or_path": group_id_or_path}
         )
+        return _tool_result_to_text(result)
 
-    def _resolve_project_alias_from_message(self, user_message: str) -> bool:
-        """Set active project when user mentions a known project alias in natural language."""
-        if not self.project_aliases:
-            if self._project_set_by_alias:
-                self.gitlab.clear_project()
-                self._project_set_by_alias = False
-            return False
+    async def set_project(self, project_id_or_path: str) -> str:
+        result = await self.client.call_tool(
+            "set_active_project", {"project_id_or_path": project_id_or_path}
+        )
+        return _tool_result_to_text(result)
 
-        project_id, project_name = _best_project_alias_match(user_message, self.project_aliases)
-        if not project_id:
-            if self._project_set_by_alias:
-                self.gitlab.clear_project()
-                self._project_set_by_alias = False
-            return False
+    async def clear_project(self) -> str:
+        result = await self.client.call_tool("clear_active_project")
+        return _tool_result_to_text(result)
 
-        if self.on_tool_call:
-            self.on_tool_call(
-                "set_active_project",
-                {"project_name": project_name, "project_id": project_id},
-            )
-
-        self.gitlab.set_project(project_id)
-        self._project_set_by_alias = True
-        return True
-
-    def initialize_project_aliases(self) -> dict[str, dict[str, str | set[str]]]:
-        """Fetch aliases from GitLab /projects at startup."""
-        return _aliases_from_projects(self.gitlab)
+    async def close(self) -> None:
+        """Clean up resources."""
+        if not self._opened:
+            return
+        await self.client.__aexit__(None, None, None)
+        self._opened = False

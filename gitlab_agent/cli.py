@@ -1,6 +1,8 @@
 """CLI chat interface – the user-facing entry point."""
 
 from __future__ import annotations
+import asyncio
+
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -32,12 +34,12 @@ def _on_tool_call(name: str, args: dict) -> None:
     console.print(f"  [tool]⚙ {name}({args_str})[/tool]")
 
 
-def main() -> None:
+async def _run() -> None:
     """Run the CLI chat loop."""
     console.print(
         Panel.fit(
             "[bold cyan]GitLab Agent[/bold cyan]\n"
-            "An AI assistant for managing your GitLab project.\n"
+            "An AI assistant for managing GitLab through a FastMCP server.\n"
             "Type [bold]/help[/bold] for commands, [bold]/q[/bold] to exit.",
             border_style="cyan",
         )
@@ -54,14 +56,13 @@ def main() -> None:
         console.print(
             f"[warning]GitLab: {config.gitlab_url} (no project/group selected)[/warning]"
         )
-        console.print("[info]Tip: use /group <id-or-path>. Project aliases refresh automatically.[/info]")
+        console.print("[info]Tip: use /group <id-or-path> or /project <id-or-path>.[/info]")
     console.print()
 
     agent = Agent(config, on_tool_call=_on_tool_call)
-
-    # Map gitlab projects -> ids if possible
-    console.print("[info]⌛ Mapping project ids to project names [/info]")
-    agent.project_aliases = agent.initialize_project_aliases()
+    await agent.open()
+    console.print(f"[info]{await agent.get_active_scope()}[/info]")
+    console.print()
 
     try:
         while True:
@@ -87,22 +88,33 @@ def main() -> None:
                 elif cmd.startswith("/group"):
                     value = user_input[len("/group"):].strip()
                     if not value:
-                        current = agent.gitlab.current_group()
-                        if current:
-                            console.print(f"[info]Current group: {current}[/info]\n")
-                        else:
-                            console.print(
-                                "[warning]No group selected. Use /group <id-or-path>[/warning]\n"
-                            )
+                        console.print(f"[info]{await agent.get_active_scope()}[/info]\n")
                         continue
 
                     try:
-                        agent.gitlab.set_group(value)
+                        result = await agent.set_group(value)
                     except ValueError as e:
                         console.print(f"[error]{e}[/error]\n")
                         continue
 
-                    console.print(f"[info]Active group set to: {value}[/info]\n")
+                    console.print(f"[info]{result}[/info]\n")
+                    continue
+                elif cmd.startswith("/project"):
+                    value = user_input[len("/project"):].strip()
+                    if not value:
+                        console.print(f"[info]{await agent.get_active_scope()}[/info]\n")
+                        continue
+
+                    try:
+                        result = await agent.set_project(value)
+                    except ValueError as e:
+                        console.print(f"[error]{e}[/error]\n")
+                        continue
+
+                    console.print(f"[info]{result}[/info]\n")
+                    continue
+                elif cmd == "/clear-project":
+                    console.print(f"[info]{await agent.clear_project()}[/info]\n")
                     continue
                 elif cmd in ("/help", "/h"):
                     console.print(
@@ -110,8 +122,10 @@ def main() -> None:
                             "[bold]/quit[/bold]  – Exit the agent\n"
                             "[bold]/reset[/bold] – Clear conversation history\n"
                             "[bold]/group <id-or-path>[/bold] – Set active GitLab group\n"
+                            "[bold]/project <id-or-path>[/bold] – Set active GitLab project\n"
+                            "[bold]/clear-project[/bold] – Clear active project scope\n"
                             "[bold]/help[/bold]  – Show this help\n"
-                            "[dim]Project names are auto-detected from cached group projects.[/dim]\n"
+                            "[dim]Scope is stored in the MCP session and reused across tool calls.[/dim]\n"
                             "\nJust type naturally to interact with GitLab:\n"
                             '  "Create a bug ticket about the login page crashing"\n'
                             '  "Find the MR related to the search feature"\n'
@@ -128,7 +142,7 @@ def main() -> None:
             # Send to agent
             try:
                 with console.status("[info]Thinking...[/info]", spinner="dots"):
-                    response = agent.chat(user_input)
+                    response = await agent.chat(user_input)
             except RuntimeError as e:
                 console.print(f"\n[error]{e}[/error]\n")
                 continue
@@ -138,7 +152,11 @@ def main() -> None:
             console.print()
 
     finally:
-        agent.close()
+        await agent.close()
+
+
+def main() -> None:
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

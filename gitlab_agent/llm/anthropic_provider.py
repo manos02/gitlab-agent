@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import uuid
 from typing import Any
 
 import anthropic
@@ -85,7 +84,7 @@ def _openai_messages_to_anthropic(
 class AnthropicProvider(BaseLLMProvider):
     def __init__(self, config: Config) -> None:
         self._model = config.llm_model
-        self._client = anthropic.Anthropic(api_key=config.anthropic_api_key)
+        self._client = anthropic.Anthropic(api_key=config.llm_key)
 
     @property
     def model_name(self) -> str:

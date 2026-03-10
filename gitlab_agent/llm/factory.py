@@ -8,6 +8,12 @@ from gitlab_agent.llm.base import BaseLLMProvider
 
 def create_llm_provider(config: Config) -> BaseLLMProvider:
     """Instantiate the LLM provider specified in config."""
+    if config.requires_api_key and not config.llm_key:
+        raise ValueError(
+            f"Missing API key for provider '{config.llm_provider}'. "
+            "Set the provider-specific API key environment variable or API_KEY."
+        )
+
     if config.llm_provider == "openai":
         from gitlab_agent.llm.openai_provider import OpenAIProvider
         return OpenAIProvider(config)
