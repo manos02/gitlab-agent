@@ -27,8 +27,8 @@ def _on_tool_call(name: str, args: dict) -> None:
     """
     Display tool calls as they happen.
     e.g.
-    ⚙ list_issues(labels='bug', project_id=1)
-    ⚙ list_issues(labels='bug', state='opened', project_id=1)
+    ⚙ set_active_project(project_id_or_path='group/project')
+    ⚙ list_issues(labels='bug', state='opened')
     """
     args_str = ", ".join(f"{k}={v!r}" for k, v in args.items())
     console.print(f"  [tool]⚙ {name}({args_str})[/tool]")

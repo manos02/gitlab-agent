@@ -107,6 +107,8 @@ The server keeps session-scoped state for:
 - Active GitLab group
 - Active GitLab project
 
+Scope is part of the FastMCP session. Tools such as `list_issues`, `list_merge_requests`, and `create_issue` should not receive ad hoc `project_id` or `project_id_or_path` arguments. Set scope first with `set_active_group` or `set_active_project`, then call the tool with only its declared schema.
+
 Use these tools first when needed:
 
 - `set_active_group`
@@ -211,6 +213,19 @@ Once the server is connected:
 2. If needed, call `set_active_group` with your group path.
 3. For create or update actions, call `set_active_project` with the full project path.
 4. Then use prompts like `list open issues`, `show MR 42`, or `create a bug issue for login redirect`.
+
+Example FastMCP call sequence:
+
+```text
+set_active_project(project_id_or_path='apps/xs2event-api')
+list_issues(labels='bug', state='opened')
+```
+
+Incorrect FastMCP usage:
+
+```text
+list_issues(labels='bug', project_id_or_path='apps/xs2event-api')
+```
 
 Important:
 

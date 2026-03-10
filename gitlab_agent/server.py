@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 import re
+from typing import Literal
 
 from fastmcp import Context, FastMCP
 
@@ -18,6 +19,8 @@ Use set_active_group to choose a default group scope.
 If a user mentions a project name instead of an exact project path, use set_active_project_from_query.
 Use get_project_catalog to inspect the cached project map for the current session.
 Use set_active_project when a task requires project-scoped operations like creating issues or reading labels.
+Do not pass project_id, project_id_or_path, or other ad hoc scope arguments to project tools. Scope is carried in FastMCP session state.
+For requests like "list bugs" or "show bug issues", prefer list_issues with labels="bug" instead of search_project.
 Listing and search tools prefer the active project and fall back to the active group when possible.
 Use get_active_scope to inspect the current MCP session scope.
 """
@@ -329,7 +332,10 @@ async def list_issues(
     milestone: str = "",
     ctx: Context | None = None,
 ) -> str:
-    """List issues in the active project or group scope."""
+    """List issues in the active FastMCP scope.
+
+    Use set_active_project or set_active_group first. Do not pass project identifiers to this tool.
+    """
     if ctx is None:
         raise RuntimeError("Context is required")
     gitlab = await _client_from_context(ctx)
@@ -631,8 +637,17 @@ async def move_issue_to_board_column(
 
 
 @mcp.tool
-async def search_project(scope: str, search: str, ctx: Context | None = None) -> str:
-    """Search the active project or group scope."""
+async def search_project(
+    scope: Literal["issues", "merge_requests", "milestones", "blobs", "commits", "wiki_blobs"],
+    search: str,
+    ctx: Context | None = None,
+) -> str:
+    """Search within the active FastMCP scope using a GitLab search domain.
+
+    The `scope` parameter must be a GitLab search domain such as `issues` or `merge_requests`.
+    Project or group routing comes from FastMCP session state, not from this argument.
+    For label-based issue queries like bugs, prefer list_issues(labels="bug").
+    """
     if ctx is None:
         raise RuntimeError("Context is required")
     gitlab = await _client_from_context(ctx)
